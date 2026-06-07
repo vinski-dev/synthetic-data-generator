@@ -30,15 +30,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Validate required Snowflake secrets
-        run: |
-          test -n "$SNOWFLAKE_ACCOUNT" || (echo "SNOWFLAKE_ACCOUNT is missing" && exit 1)
-          test -n "$SNOWFLAKE_USER" || (echo "SNOWFLAKE_USER is missing" && exit 1)
-          test -n "$SNOWFLAKE_PASSWORD" || (echo "SNOWFLAKE_PASSWORD is missing" && exit 1)
-          test -n "$SNOWFLAKE_ROLE" || (echo "SNOWFLAKE_ROLE is missing" && exit 1)
-          test -n "$SNOWFLAKE_WAREHOUSE" || (echo "SNOWFLAKE_WAREHOUSE is missing" && exit 1)
-          test -n "$SNOWFLAKE_DATABASE" || (echo "SNOWFLAKE_DATABASE is missing" && exit 1)
-
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
         with:
