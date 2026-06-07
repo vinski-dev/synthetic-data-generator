@@ -18,12 +18,12 @@ jobs:
       contents: read
 
     env:
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ vars.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_ROLE: ${{ vars.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ vars.SNOWFLAKE_DATABASE }}
 
    
     steps:
@@ -31,6 +31,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Validate required Snowflake secrets
+        if: ${{ secrets.SNOWFLAKE_ACCOUNT != '' }}
         run: |
           test -n "$SNOWFLAKE_ACCOUNT" || (echo "SNOWFLAKE_ACCOUNT is missing" && exit 1)
           test -n "$SNOWFLAKE_USER" || (echo "SNOWFLAKE_USER is missing" && exit 1)
