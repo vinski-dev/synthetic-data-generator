@@ -1,0 +1,102 @@
+version: 2
+
+models:
+  - name: fct_sales
+    description: Transaction-level sales fact table.
+    columns:
+      - name: sales_event_key
+        description: Stable unique event key for each sales transaction.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: order_id
+        description: Source order identifier.
+        data_tests:
+          - not_null
+
+      - name: customer_id
+        description: Customer identifier.
+        data_tests:
+          - not_null
+
+      - name: order_status
+        description: Standardized order status.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["COMPLETED", "PENDING", "CANCELLED", "REFUNDED"]
+
+      - name: source_file_name
+        description: S3 source file where the record originated.
+        data_tests:
+          - not_null
+
+      - name: load_ts
+        description: Timestamp when the record was loaded into the raw layer.
+        data_tests:
+          - not_null
+
+  - name: mart_sales_daily_kpi
+    description: Daily sales KPI table for reporting.
+    columns:
+      - name: order_date
+        description: Sales order date.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: total_orders
+        description: Total number of sales transactions for the day.
+
+      - name: completed_orders
+        description: Number of completed sales transactions.
+
+      - name: net_sales_amount
+        description: Total net sales amount after discounts.
+
+      - name: avg_order_value
+        description: Average net sales amount per order.
+
+  - name: mart_customer_sales_kpi
+    description: Customer-level sales KPI table for reporting.
+    columns:
+      - name: customer_id
+        description: Customer identifier.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: total_orders
+        description: Total number of orders for the customer.
+
+      - name: completed_orders
+        description: Total completed orders for the customer.
+
+      - name: completed_net_sales_amount
+        description: Total completed net sales amount for the customer.
+
+  - name: mart_load_audit
+    description: Reconciles raw Snowpipe-loaded file row counts against fact table row counts.
+    columns:
+      - name: source_file_name
+        description: S3 source file name.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: raw_row_count
+        description: Number of rows loaded into the raw table from the source file.
+
+      - name: fact_row_count
+        description: Number of rows from the source file that reached the fact table.
+
+      - name: row_count_difference
+        description: Difference between raw row count and fact row count.
+
+      - name: reconciliation_status
+        description: Indicates whether raw and fact row counts match.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["MATCHED", "MISMATCHED"]

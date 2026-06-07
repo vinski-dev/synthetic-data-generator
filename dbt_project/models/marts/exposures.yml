@@ -1,0 +1,19 @@
+version: 2
+
+exposures:
+  - name: sales_daily_kpi_dashboard
+    label: Sales Daily KPI Dashboard
+    type: dashboard
+    maturity: medium
+    description: >
+      Dashboard used to monitor daily sales volume, net sales, discount rate,
+      completed orders, cancelled orders, refunded orders, and unique customers.
+
+    depends_on:
+      - ref('mart_sales_daily_kpi')
+      - ref('mart_customer_sales_kpi')
+      - ref('mart_load_audit')
+
+    owner:
+      name: Alvin Paano
+      email: alvinpaano.data@gmail.com

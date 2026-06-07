@@ -1,0 +1,40 @@
+name: synthetic_sales_analytics
+version: "1.0.0"
+config-version: 2
+
+profile: synthetic_sales_analytics
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  synthetic_sales_analytics:
+
+    staging:
+      +schema: STAGING
+      +materialized: table
+      +transient: true
+      +snowflake_warehouse: WH_DBT_TRANSFORM
+      +query_tag: "dbt_staging"
+      +tags: ["staging"]
+
+    intermediate:
+      +schema: INTERMEDIATE
+      +materialized: table
+      +transient: true
+      +snowflake_warehouse: WH_DBT_TRANSFORM
+      +query_tag: "dbt_intermediate"
+      +tags: ["intermediate"]
+
+    marts:
+      +schema: MARTS
+      +materialized: table
+      +snowflake_warehouse: WH_DBT_MARTS
+      +query_tag: "dbt_marts"
+      +tags: ["marts"]
+
+data_tests:
+  synthetic_sales_analytics:
+    +snowflake_warehouse: WH_DBT_DEV
+    +query_tag: "dbt_tests"

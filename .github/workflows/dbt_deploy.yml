@@ -1,0 +1,56 @@
+name: CD - dbt build
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - "dbt_project/**"
+      - ".github/workflows/dbt_deploy.yml"
+
+jobs:
+  dbt-build:
+    name: Run dbt build on Snowflake
+    runs-on: ubuntu-latest
+
+    env:
+      DBT_PROFILES_DIR: dbt_project
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check dbt connection
+        working-directory: dbt_project
+        run: |
+          dbt debug --target prod --no-partial-parse
+
+      - name: Check source freshness
+        working-directory: dbt_project
+        continue-on-error: true
+        run: |
+          dbt source freshness --target prod --no-partial-parse
+
+      - name: Run dbt build
+        working-directory: dbt_project
+        run: |
+          dbt build --target prod --selector transform_pipeline --no-partial-parse

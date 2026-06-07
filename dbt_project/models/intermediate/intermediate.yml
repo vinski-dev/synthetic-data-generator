@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: int_sales_enriched
+    description: >
+      Reusable business logic layer for sales records. Adds derived date fields,
+      discount rate, completed-order flags, and failed or reversed order flags.
+
+    columns:
+      - name: sales_event_key
+        description: Stable transaction event key built from order_id, batch_id, and source_file_name.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: order_id
+        description: Source order identifier.
+
+      - name: customer_id
+        description: Customer identifier.
+
+      - name: product_id
+        description: Product identifier.
+
+      - name: product_category
+        description: Standardized product category.
+
+      - name: order_date
+        description: Date portion of the order timestamp.
+
+      - name: order_month
+        description: Month bucket derived from order_date.
+
+      - name: discount_rate
+        description: Discount amount divided by gross amount.
+
+      - name: is_completed_order
+        description: Boolean flag identifying completed orders.
+
+      - name: is_failed_or_reversed_order
+        description: Boolean flag identifying cancelled or refunded orders.
+
+      - name: source_file_name
+        description: S3 source file where the record originated.
+
+      - name: load_ts
+        description: Timestamp when the record was loaded into Snowflake raw table.

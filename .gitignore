@@ -1,0 +1,13 @@
+.env
+set_env.ps1
+venv/
+venv311/
+__pycache__/
+*.pyc
+
+output/
+logs/
+
+dbt_project/target/
+dbt_project/logs/
+dbt_project/dbt_packages/

@@ -1,0 +1,23 @@
+selectors:
+  - name: staging
+    description: Run only staging models.
+    definition:
+      tag: staging
+
+  - name: intermediate
+    description: Run only intermediate models.
+    definition:
+      tag: intermediate
+
+  - name: marts
+    description: Run only mart models.
+    definition:
+      tag: marts
+
+  - name: transform_pipeline
+    description: Run the full transformation pipeline from staging to marts.
+    definition:
+      union:
+        - tag: staging
+        - tag: intermediate
+        - tag: marts
