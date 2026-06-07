@@ -14,15 +14,16 @@ jobs:
     name: Validate Python and dbt project
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+
     env:
-      DBT_PROFILES_DIR: dbt_project
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
       SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
       SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
       SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
@@ -48,22 +49,41 @@ jobs:
         run: |
           python -m compileall pipeline dags
 
+      - name: Create dbt profiles.yml
+        run: |
+          cat > dbt_project/profiles.yml <<EOF
+          synthetic_sales_analytics:
+            target: ci
+            outputs:
+              ci:
+                type: snowflake
+                account: "${SNOWFLAKE_ACCOUNT}"
+                user: "${SNOWFLAKE_USER}"
+                password: "${SNOWFLAKE_PASSWORD}"
+                role: "${SNOWFLAKE_ROLE}"
+                warehouse: "${SNOWFLAKE_WAREHOUSE}"
+                database: "${SNOWFLAKE_DATABASE}"
+                schema: DBT_CI
+                threads: 4
+                client_session_keep_alive: false
+          EOF
+
       - name: Validate dbt connection
         working-directory: dbt_project
         run: |
-          dbt debug --target ci --no-partial-parse
+          dbt debug --target ci --profiles-dir . --no-partial-parse
 
       - name: Parse dbt project
         working-directory: dbt_project
         run: |
-          dbt parse --target ci --no-partial-parse
+          dbt parse --target ci --profiles-dir . --no-partial-parse
 
       - name: Compile dbt project
         working-directory: dbt_project
         run: |
-          dbt compile --target ci --no-partial-parse
+          dbt compile --target ci --profiles-dir . --no-partial-parse
 
       - name: dbt build dry run
         working-directory: dbt_project
         run: |
-          dbt build --target ci --selector transform_pipeline --empty --no-partial-parse
+          dbt build --target ci --profiles-dir . --selector transform_pipeline --empty --no-partial-parse
