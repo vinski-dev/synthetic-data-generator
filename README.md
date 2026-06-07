@@ -1,2398 +1,833 @@
-\# Synthetic Sales ELT Pipeline with Airflow, S3, Snowpipe, Snowflake, dbt, and GitHub Actions
+# Synthetic Sales ELT Pipeline
 
+![CI](https://github.com/vinski-dev/synthetic-data-generator/actions/workflows/ci.yml/badge.svg)
+![dbt Deploy](https://github.com/vinski-dev/synthetic-data-generator/actions/workflows/dbt_deploy.yml/badge.svg)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![dbt](https://img.shields.io/badge/dbt-Snowflake-orange)
+![Snowflake](https://img.shields.io/badge/Warehouse-Snowflake-29B5E8)
+![Airflow](https://img.shields.io/badge/Orchestration-Airflow-017CEE)
+![AWS](https://img.shields.io/badge/Storage-AWS%20S3-orange)
 
+## Overview
 
-\## Project Overview
+This project is a production-style **synthetic sales ELT pipeline** built to demonstrate practical Data Engineering and Analytics Engineering capabilities.
 
+The pipeline generates synthetic sales transaction data using Python, lands the data in AWS S3, auto-ingests new files into Snowflake using Snowpipe, and transforms the raw data into analytics-ready models using dbt.
 
+It also includes Airflow orchestration, dbt tests, source freshness checks, load reconciliation, Snowflake workload isolation, and GitHub Actions CI/CD.
 
-This project is an end-to-end data engineering pipeline that generates synthetic sales transaction data, lands the data in AWS S3, auto-ingests it into Snowflake using Snowpipe, and transforms it into analytics-ready models using dbt.
+## Why This Project Exists
 
+This project was built as a portfolio-grade data engineering implementation to demonstrate:
 
+* Cloud-based raw data landing with AWS S3
+* Event-driven ingestion into Snowflake using Snowpipe
+* Modular transformation using dbt
+* Layered data modeling with staging, intermediate, and marts
+* Data quality checks and business reconciliation tests
+* Airflow orchestration for end-to-end ELT execution
+* GitHub Actions CI/CD for automated validation
+* Secure credential handling using environment variables and GitHub Secrets
 
-The pipeline demonstrates a practical modern ELT architecture with orchestration, cloud storage, warehouse ingestion, data transformation, testing, reconciliation, documentation, and CI/CD.
+## Architecture
 
+```mermaid
+flowchart LR
+    A[Python Synthetic Data Generator] --> B[Local CSV Output]
+    B --> C[AWS S3 Raw Landing Zone]
+    C --> D[S3 Event Notification]
+    D --> E[Snowpipe Auto-Ingestion]
+    E --> F[Snowflake RAW.SALES_RAW]
+    F --> G[dbt Staging Layer]
+    G --> H[dbt Intermediate Layer]
+    H --> I[dbt Mart Layer]
+    I --> J[Analytics-Ready KPI Tables]
 
+    K[Airflow DAG] --> A
+    K --> L[Wait for Snowpipe Load]
+    L --> M[Run dbt Build]
 
-\## Architecture
-
-
-
-```text
-
-Python Synthetic Data Generator
-
-&#x20;       ↓
-
-Local CSV Output
-
-&#x20;       ↓
-
-AWS S3 Raw Landing Zone
-
-&#x20;       ↓
-
-Snowpipe Auto-Ingestion
-
-&#x20;       ↓
-
-Snowflake RAW.SALES\_RAW
-
-&#x20;       ↓
-
-dbt Staging Models
-
-&#x20;       ↓
-
-dbt Intermediate Models
-
-&#x20;       ↓
-
-dbt Mart Models
-
-&#x20;       ↓
-
-Analytics-Ready KPI Tables
-
+    N[GitHub Actions CI/CD] --> O[Python Validation]
+    N --> P[dbt Parse Compile Build]
 ```
 
+## End-to-End Data Flow
 
+```text
+Python Generator
+    ↓
+CSV File Created Locally
+    ↓
+Upload to AWS S3
+    ↓
+S3 Event Notification
+    ↓
+Snowpipe Auto-Ingest
+    ↓
+Snowflake RAW Layer
+    ↓
+dbt Staging Layer
+    ↓
+dbt Intermediate Layer
+    ↓
+dbt Mart Layer
+    ↓
+Sales KPI Tables
+```
 
-\## Technology Stack
+## Technology Stack
 
-
-
-| Area             | Tool                 |
-
+| Category         | Technology           |
 | ---------------- | -------------------- |
-
 | Programming      | Python 3.11          |
-
 | Data Generation  | pandas, numpy, faker |
-
 | Cloud Storage    | AWS S3               |
-
-| Orchestration    | Apache Airflow       |
-
+| Ingestion        | Snowpipe             |
 | Data Warehouse   | Snowflake            |
-
-| Auto-Ingestion   | Snowpipe             |
-
 | Transformation   | dbt                  |
-
-| CI/CD            | GitHub Actions       |
-
+| Orchestration    | Apache Airflow       |
 | Containerization | Docker Compose       |
-
-| Version Control  | Git and GitHub       |
-
-
-
-\## Business Use Case
-
-
-
-The pipeline simulates a sales analytics workload.
-
-
-
-It generates synthetic order-level transaction data with fields such as:
-
-
-
-\* Order ID
-
-\* Customer ID
-
-\* Product ID
-
-\* Product category
-
-\* Order timestamp
-
-\* Quantity
-
-\* Unit price
-
-\* Gross amount
-
-\* Discount amount
-
-\* Net amount
-
-\* Payment method
-
-\* Order status
-
-\* Batch ID
-
-\* Generated timestamp
-
-
-
-The transformed data supports reporting use cases such as:
-
-
-
-\* Daily sales performance
-
-\* Completed vs cancelled/refunded orders
-
-\* Customer-level sales KPIs
-
-\* Discount analysis
-
-\* File-level load reconciliation
-
-\* Data quality monitoring
-
-
-
-\## Project Structure
-
-
-
-```text
-
-synthetic-data-generator/
-
-│
-
-├── dags/
-
-│   └── synthetic\_sales\_s3\_dag.py
-
-│
-
-├── pipeline/
-
-│   ├── \_\_init\_\_.py
-
-│   └── sales\_pipeline.py
-
-│
-
-├── dbt\_project/
-
-│   ├── dbt\_project.yml
-
-│   ├── profiles.yml
-
-│   ├── selectors.yml
-
-│   │
-
-│   ├── macros/
-
-│   │   └── generate\_schema\_name.sql
-
-│   │
-
-│   ├── models/
-
-│   │   ├── staging/
-
-│   │   │   ├── src\_sales.yml
-
-│   │   │   └── stg\_sales.sql
-
-│   │   │
-
-│   │   ├── intermediate/
-
-│   │   │   ├── intermediate.yml
-
-│   │   │   └── int\_sales\_enriched.sql
-
-│   │   │
-
-│   │   └── marts/
-
-│   │       ├── fct\_sales.sql
-
-│   │       ├── mart\_sales\_daily\_kpi.sql
-
-│   │       ├── mart\_customer\_sales\_kpi.sql
-
-│   │       ├── mart\_load\_audit.sql
-
-│   │       ├── marts.yml
-
-│   │       └── exposures.yml
-
-│   │
-
-│   └── tests/
-
-│       ├── assert\_sales\_amounts\_reconcile.sql
-
-│       └── assert\_load\_audit\_matched.sql
-
-│
-
-├── .github/
-
-│   └── workflows/
-
-│       ├── ci.yml
-
-│       └── dbt\_deploy.yml
-
-│
-
-├── output/
-
-├── config.py
-
-├── main.py
-
-├── requirements.txt
-
-├── Dockerfile
-
-├── docker-compose.yaml
-
-├── .env.example
-
-├── .gitignore
-
-└── README.md
-
-```
-
-
-
-\## Configuration
-
-
-
-The project uses the following core configuration:
-
-
+| CI/CD            | GitHub Actions       |
+| Version Control  | Git / GitHub         |
+
+## Business Use Case
+
+The project simulates a sales analytics pipeline for an e-commerce or retail-style business.
+
+The generated data includes transaction-level sales records with:
+
+* Order ID
+* Customer ID
+* Product ID
+* Product category
+* Order timestamp
+* Quantity
+* Unit price
+* Gross amount
+* Discount amount
+* Net amount
+* Payment method
+* Order status
+* Batch ID
+* Source file metadata
+* Load timestamp
+
+The transformed mart models support business reporting such as:
+
+* Daily sales performance
+* Completed vs pending vs cancelled vs refunded orders
+* Net sales amount
+* Average order value
+* Discount rate
+* Customer-level sales behavior
+* File-level load reconciliation
+
+## Default Project Configuration
+
+The current default configuration generates synthetic sales data and uploads it to AWS S3.
 
 ```python
-
-BUCKET\_NAME = "vinski-synthetic-data-bucket"
-
-NUM\_RECORDS = 100000
-
-OUTPUT\_PREFIX = "sales"
-
+BUCKET_NAME = "vinski-synthetic-data-bucket"
+NUM_RECORDS = 100000
+OUTPUT_PREFIX = "sales"
 REGION = "ap-southeast-1"
-
 ```
 
-
-
-Generated files are uploaded to S3 using this path pattern:
-
-
+Generated files are written to S3 using a partition-style path:
 
 ```text
-
 s3://vinski-synthetic-data-bucket/sales/raw/year=YYYY/month=MM/day=DD/file.csv
-
 ```
 
-
-
-\## Environment Variables
-
-
-
-Create a local `.env` file in the project root.
-
-
-
-Do not commit `.env` to GitHub.
-
-
-
-Example:
-
-
-
-```env
-
-AIRFLOW\_UID=50000
-
-
-
-AWS\_ACCESS\_KEY\_ID=your\_aws\_access\_key
-
-AWS\_SECRET\_ACCESS\_KEY=your\_aws\_secret\_key
-
-AWS\_DEFAULT\_REGION=ap-southeast-1
-
-
-
-SNOWFLAKE\_ACCOUNT=your\_snowflake\_account\_identifier
-
-SNOWFLAKE\_USER=your\_snowflake\_username
-
-SNOWFLAKE\_PASSWORD=your\_snowflake\_password
-
-SNOWFLAKE\_ROLE=SYSADMIN
-
-SNOWFLAKE\_WAREHOUSE=WH\_DBT\_DEV
-
-SNOWFLAKE\_DATABASE=SYNTHETIC\_DATA
-
-```
-
-
-
-\## Python Setup
-
-
-
-Create a Python 3.11 virtual environment.
-
-
-
-```powershell
-
-py -3.11 -m venv venv311
-
-.\\venv311\\Scripts\\Activate.ps1
-
-python -m pip install --upgrade pip
-
-python -m pip install -r requirements.txt
-
-```
-
-
-
-Verify Python version:
-
-
-
-```powershell
-
-python --version
-
-```
-
-
-
-Expected:
-
-
+## Project Structure
 
 ```text
-
-Python 3.11.x
-
+synthetic-data-generator/
+│
+├── dags/
+│   └── synthetic_sales_s3_dag.py
+│
+├── pipeline/
+│   ├── __init__.py
+│   └── sales_pipeline.py
+│
+├── dbt_project/
+│   ├── dbt_project.yml
+│   ├── selectors.yml
+│   │
+│   ├── macros/
+│   │   └── generate_schema_name.sql
+│   │
+│   ├── models/
+│   │   ├── staging/
+│   │   │   ├── src_sales.yml
+│   │   │   └── stg_sales.sql
+│   │   │
+│   │   ├── intermediate/
+│   │   │   ├── intermediate.yml
+│   │   │   └── int_sales_enriched.sql
+│   │   │
+│   │   └── marts/
+│   │       ├── fct_sales.sql
+│   │       ├── mart_sales_daily_kpi.sql
+│   │       ├── mart_customer_sales_kpi.sql
+│   │       ├── mart_load_audit.sql
+│   │       ├── marts.yml
+│   │       └── exposures.yml
+│   │
+│   └── tests/
+│       ├── assert_sales_amounts_reconcile.sql
+│       └── assert_load_audit_matched.sql
+│
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── dbt_deploy.yml
+│
+├── output/
+├── config.py
+├── main.py
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yaml
+├── .env.example
+├── .gitignore
+└── README.md
 ```
 
+## Data Model
 
-
-\## Running the Python Pipeline Manually
-
-
-
-To generate synthetic sales data and upload it to S3:
-
-
-
-```powershell
-
-python main.py
-
-```
-
-
-
-Expected result:
-
-
+The project follows a layered dbt model design.
 
 ```text
-
-Generated records: 100,000
-
-Data validation passed
-
-CSV file created in output/
-
-File uploaded to S3
-
+RAW.SALES_RAW
+    ↓
+STAGING.STG_SALES
+    ↓
+INTERMEDIATE.INT_SALES_ENRICHED
+    ↓
+MARTS.FCT_SALES
+    ↓
+MARTS.MART_SALES_DAILY_KPI
+    ↓
+MARTS.MART_CUSTOMER_SALES_KPI
+    ↓
+MARTS.MART_LOAD_AUDIT
 ```
 
+## dbt Layering Strategy
 
+### 1. Raw Layer
 
-\## AWS S3 Setup
+The raw layer is populated by Snowpipe.
 
-
-
-The project expects an S3 bucket:
-
-
+Table:
 
 ```text
-
-vinski-synthetic-data-bucket
-
+SYNTHETIC_DATA.RAW.SALES_RAW
 ```
-
-
-
-The pipeline writes files under:
-
-
-
-```text
-
-sales/raw/
-
-```
-
-
-
-Minimum IAM permissions for the upload user:
-
-
-
-```json
-
-{
-
-&#x20; "Version": "2012-10-17",
-
-&#x20; "Statement": \[
-
-&#x20;   {
-
-&#x20;     "Sid": "AllowListTargetBucket",
-
-&#x20;     "Effect": "Allow",
-
-&#x20;     "Action": \[
-
-&#x20;       "s3:ListBucket",
-
-&#x20;       "s3:GetBucketLocation"
-
-&#x20;     ],
-
-&#x20;     "Resource": "arn:aws:s3:::vinski-synthetic-data-bucket"
-
-&#x20;   },
-
-&#x20;   {
-
-&#x20;     "Sid": "AllowWriteToSalesPrefix",
-
-&#x20;     "Effect": "Allow",
-
-&#x20;     "Action": \[
-
-&#x20;       "s3:PutObject",
-
-&#x20;       "s3:GetObject",
-
-&#x20;       "s3:AbortMultipartUpload",
-
-&#x20;       "s3:ListMultipartUploadParts"
-
-&#x20;     ],
-
-&#x20;     "Resource": "arn:aws:s3:::vinski-synthetic-data-bucket/sales/\*"
-
-&#x20;   }
-
-&#x20; ]
-
-}
-
-```
-
-
-
-\## Snowflake Setup
-
-
-
-Create the main database and schemas:
-
-
-
-```sql
-
-USE ROLE SYSADMIN;
-
-
-
-CREATE DATABASE IF NOT EXISTS SYNTHETIC\_DATA;
-
-
-
-CREATE SCHEMA IF NOT EXISTS SYNTHETIC\_DATA.RAW;
-
-CREATE SCHEMA IF NOT EXISTS SYNTHETIC\_DATA.STAGING;
-
-CREATE SCHEMA IF NOT EXISTS SYNTHETIC\_DATA.INTERMEDIATE;
-
-CREATE SCHEMA IF NOT EXISTS SYNTHETIC\_DATA.MARTS;
-
-```
-
-
-
-\## Snowflake Warehouses
-
-
-
-This project uses a practical workload isolation approach:
-
-
-
-```text
-
-WH\_DBT\_DEV         → local development and dbt debug
-
-WH\_DBT\_TRANSFORM   → staging and intermediate models
-
-WH\_DBT\_MARTS       → facts, dimensions, and KPI marts
-
-```
-
-
-
-Create warehouses:
-
-
-
-```sql
-
-USE ROLE SYSADMIN;
-
-
-
-CREATE WAREHOUSE IF NOT EXISTS WH\_DBT\_DEV
-
-&#x20;   WAREHOUSE\_SIZE = 'XSMALL'
-
-&#x20;   AUTO\_SUSPEND = 60
-
-&#x20;   AUTO\_RESUME = TRUE
-
-&#x20;   INITIALLY\_SUSPENDED = TRUE;
-
-
-
-CREATE WAREHOUSE IF NOT EXISTS WH\_DBT\_TRANSFORM
-
-&#x20;   WAREHOUSE\_SIZE = 'XSMALL'
-
-&#x20;   AUTO\_SUSPEND = 60
-
-&#x20;   AUTO\_RESUME = TRUE
-
-&#x20;   INITIALLY\_SUSPENDED = TRUE;
-
-
-
-CREATE WAREHOUSE IF NOT EXISTS WH\_DBT\_MARTS
-
-&#x20;   WAREHOUSE\_SIZE = 'XSMALL'
-
-&#x20;   AUTO\_SUSPEND = 120
-
-&#x20;   AUTO\_RESUME = TRUE
-
-&#x20;   INITIALLY\_SUSPENDED = TRUE;
-
-```
-
-
-
-Grant warehouse usage:
-
-
-
-```sql
-
-USE ROLE SECURITYADMIN;
-
-
-
-GRANT USAGE, OPERATE ON WAREHOUSE WH\_DBT\_DEV TO ROLE SYSADMIN;
-
-GRANT USAGE, OPERATE ON WAREHOUSE WH\_DBT\_TRANSFORM TO ROLE SYSADMIN;
-
-GRANT USAGE, OPERATE ON WAREHOUSE WH\_DBT\_MARTS TO ROLE SYSADMIN;
-
-```
-
-
-
-\## Raw Snowflake Table
-
-
-
-Snowpipe loads data into this table:
-
-
-
-```sql
-
-USE ROLE SYSADMIN;
-
-USE DATABASE SYNTHETIC\_DATA;
-
-USE SCHEMA RAW;
-
-
-
-CREATE OR REPLACE TABLE SALES\_RAW (
-
-&#x20;   ORDER\_ID NUMBER,
-
-&#x20;   CUSTOMER\_ID NUMBER,
-
-&#x20;   PRODUCT\_ID NUMBER,
-
-&#x20;   PRODUCT\_CATEGORY STRING,
-
-&#x20;   ORDER\_TIMESTAMP TIMESTAMP\_NTZ,
-
-&#x20;   QUANTITY NUMBER,
-
-&#x20;   UNIT\_PRICE NUMBER(18,2),
-
-&#x20;   GROSS\_AMOUNT NUMBER(18,2),
-
-&#x20;   DISCOUNT\_AMOUNT NUMBER(18,2),
-
-&#x20;   NET\_AMOUNT NUMBER(18,2),
-
-&#x20;   PAYMENT\_METHOD STRING,
-
-&#x20;   ORDER\_STATUS STRING,
-
-&#x20;   BATCH\_ID STRING,
-
-&#x20;   GENERATED\_AT\_UTC TIMESTAMP\_TZ,
-
-&#x20;   SOURCE\_FILE\_NAME STRING,
-
-&#x20;   LOAD\_TS TIMESTAMP\_LTZ DEFAULT CURRENT\_TIMESTAMP()
-
-);
-
-```
-
-
-
-\## Snowpipe Auto-Ingestion
-
-
-
-Snowpipe auto-ingestion loads new S3 files into Snowflake when files arrive under:
-
-
-
-```text
-
-s3://vinski-synthetic-data-bucket/sales/raw/
-
-```
-
-
-
-High-level Snowpipe flow:
-
-
-
-```text
-
-S3 object created
-
-&#x20;       ↓
-
-S3 event notification
-
-&#x20;       ↓
-
-Snowflake notification channel
-
-&#x20;       ↓
-
-Snowpipe COPY INTO
-
-&#x20;       ↓
-
-RAW.SALES\_RAW
-
-```
-
-
-
-Create file format:
-
-
-
-```sql
-
-USE DATABASE SYNTHETIC\_DATA;
-
-USE SCHEMA RAW;
-
-
-
-CREATE OR REPLACE FILE FORMAT SALES\_CSV\_FF
-
-&#x20;   TYPE = CSV
-
-&#x20;   FIELD\_DELIMITER = ','
-
-&#x20;   SKIP\_HEADER = 1
-
-&#x20;   FIELD\_OPTIONALLY\_ENCLOSED\_BY = '"'
-
-&#x20;   NULL\_IF = ('', 'NULL', 'null')
-
-&#x20;   EMPTY\_FIELD\_AS\_NULL = TRUE
-
-&#x20;   TIMESTAMP\_FORMAT = AUTO;
-
-```
-
-
-
-Create external stage:
-
-
-
-```sql
-
-CREATE OR REPLACE STAGE SALES\_S3\_STAGE
-
-&#x20;   URL = 's3://vinski-synthetic-data-bucket/sales/raw/'
-
-&#x20;   STORAGE\_INTEGRATION = S3\_SALES\_INT
-
-&#x20;   FILE\_FORMAT = SALES\_CSV\_FF;
-
-```
-
-
-
-Create Snowpipe:
-
-
-
-```sql
-
-CREATE OR REPLACE PIPE SALES\_AUTO\_PIPE
-
-&#x20;   AUTO\_INGEST = TRUE
-
-AS
-
-COPY INTO SALES\_RAW (
-
-&#x20;   ORDER\_ID,
-
-&#x20;   CUSTOMER\_ID,
-
-&#x20;   PRODUCT\_ID,
-
-&#x20;   PRODUCT\_CATEGORY,
-
-&#x20;   ORDER\_TIMESTAMP,
-
-&#x20;   QUANTITY,
-
-&#x20;   UNIT\_PRICE,
-
-&#x20;   GROSS\_AMOUNT,
-
-&#x20;   DISCOUNT\_AMOUNT,
-
-&#x20;   NET\_AMOUNT,
-
-&#x20;   PAYMENT\_METHOD,
-
-&#x20;   ORDER\_STATUS,
-
-&#x20;   BATCH\_ID,
-
-&#x20;   GENERATED\_AT\_UTC,
-
-&#x20;   SOURCE\_FILE\_NAME,
-
-&#x20;   LOAD\_TS
-
-)
-
-FROM (
-
-&#x20;   SELECT
-
-&#x20;       $1::NUMBER AS ORDER\_ID,
-
-&#x20;       $2::NUMBER AS CUSTOMER\_ID,
-
-&#x20;       $3::NUMBER AS PRODUCT\_ID,
-
-&#x20;       $4::STRING AS PRODUCT\_CATEGORY,
-
-&#x20;       TRY\_TO\_TIMESTAMP\_NTZ($5) AS ORDER\_TIMESTAMP,
-
-&#x20;       $6::NUMBER AS QUANTITY,
-
-&#x20;       $7::NUMBER(18,2) AS UNIT\_PRICE,
-
-&#x20;       $8::NUMBER(18,2) AS GROSS\_AMOUNT,
-
-&#x20;       $9::NUMBER(18,2) AS DISCOUNT\_AMOUNT,
-
-&#x20;       $10::NUMBER(18,2) AS NET\_AMOUNT,
-
-&#x20;       $11::STRING AS PAYMENT\_METHOD,
-
-&#x20;       $12::STRING AS ORDER\_STATUS,
-
-&#x20;       $13::STRING AS BATCH\_ID,
-
-&#x20;       TRY\_TO\_TIMESTAMP\_TZ($14) AS GENERATED\_AT\_UTC,
-
-&#x20;       METADATA$FILENAME AS SOURCE\_FILE\_NAME,
-
-&#x20;       CURRENT\_TIMESTAMP() AS LOAD\_TS
-
-&#x20;   FROM @SALES\_S3\_STAGE
-
-)
-
-FILE\_FORMAT = (FORMAT\_NAME = SALES\_CSV\_FF)
-
-ON\_ERROR = 'CONTINUE';
-
-```
-
-
-
-Check Snowpipe status:
-
-
-
-```sql
-
-SELECT SYSTEM$PIPE\_STATUS('SYNTHETIC\_DATA.RAW.SALES\_AUTO\_PIPE');
-
-```
-
-
-
-Check loaded files:
-
-
-
-```sql
-
-SELECT
-
-&#x20;   SOURCE\_FILE\_NAME,
-
-&#x20;   COUNT(\*) AS ROW\_COUNT,
-
-&#x20;   MIN(LOAD\_TS) AS FIRST\_LOADED\_AT,
-
-&#x20;   MAX(LOAD\_TS) AS LAST\_LOADED\_AT
-
-FROM SYNTHETIC\_DATA.RAW.SALES\_RAW
-
-GROUP BY SOURCE\_FILE\_NAME
-
-ORDER BY LAST\_LOADED\_AT DESC;
-
-```
-
-
-
-\## dbt Model Layers
-
-
-
-The dbt project follows a layered transformation approach.
-
-
-
-\### Staging Layer
-
-
-
-Schema:
-
-
-
-```text
-
-SYNTHETIC\_DATA.STAGING
-
-```
-
-
-
-Model:
-
-
-
-```text
-
-stg\_sales
-
-```
-
-
 
 Purpose:
 
+* Store Snowpipe-loaded files from S3
+* Preserve source-level records
+* Capture file metadata
+* Capture load timestamp
+* Keep raw ingestion separate from transformation logic
 
-
-\* Read from `RAW.SALES\_RAW`
-
-\* Standardize column names
-
-\* Cast data types
-
-\* Normalize text fields
-
-\* Create a stable `sales\_event\_key`
-
-\* Deduplicate records
-
-\* Preserve source metadata
-
-
-
-\### Intermediate Layer
-
-
-
-Schema:
-
-
-
-```text
-
-SYNTHETIC\_DATA.INTERMEDIATE
-
-```
-
-
+### 2. Staging Layer
 
 Model:
 
-
-
 ```text
-
-int\_sales\_enriched
-
+STAGING.STG_SALES
 ```
-
-
 
 Purpose:
 
+* Standardize column names
+* Cast data types
+* Normalize text values
+* Deduplicate records
+* Create a stable transaction event key
+* Preserve source metadata
 
-
-\* Add reusable business logic
-
-\* Calculate discount rate
-
-\* Add completed-order flag
-
-\* Add failed/reversed-order flag
-
-\* Add order month
-
-\* Prepare enriched sales data for marts
-
-
-
-\### Mart Layer
-
-
-
-Schema:
-
-
+Example business key strategy:
 
 ```text
-
-SYNTHETIC\_DATA.MARTS
-
+sales_event_key = md5(order_id + batch_id + source_file_name)
 ```
 
+This avoids treating `order_id` alone as globally unique because each generated file may restart order IDs from 1.
 
+### 3. Intermediate Layer
+
+Model:
+
+```text
+INTERMEDIATE.INT_SALES_ENRICHED
+```
+
+Purpose:
+
+* Apply reusable business logic
+* Calculate discount rate
+* Derive order month
+* Add completed order flag
+* Add failed or reversed order flag
+* Prepare enriched transaction data for mart models
+
+### 4. Mart Layer
 
 Models:
 
-
-
 ```text
-
-fct\_sales
-
-mart\_sales\_daily\_kpi
-
-mart\_customer\_sales\_kpi
-
-mart\_load\_audit
-
+MARTS.FCT_SALES
+MARTS.MART_SALES_DAILY_KPI
+MARTS.MART_CUSTOMER_SALES_KPI
+MARTS.MART_LOAD_AUDIT
 ```
-
-
 
 Purpose:
 
+* Provide transaction-level fact data
+* Provide daily sales KPI reporting
+* Provide customer-level sales metrics
+* Reconcile raw file row counts against fact table row counts
 
+## Snowflake Workload Isolation
 
-\* Create analytics-ready fact table
-
-\* Create daily KPI mart
-
-\* Create customer KPI mart
-
-\* Reconcile raw file row counts against fact table row counts
-
-
-
-\## dbt Commands
-
-
-
-Go to the dbt project:
-
-
-
-```powershell
-
-cd C:\\dev\\synthetic-data-generator\\dbt\_project
-
-```
-
-
-
-Debug dbt connection:
-
-
-
-```powershell
-
-dbt debug --no-partial-parse
-
-```
-
-
-
-Parse project:
-
-
-
-```powershell
-
-dbt parse --no-partial-parse
-
-```
-
-
-
-Run source freshness:
-
-
-
-```powershell
-
-dbt source freshness --no-partial-parse
-
-```
-
-
-
-Build all transformation models:
-
-
-
-```powershell
-
-dbt build --selector transform\_pipeline --no-partial-parse
-
-```
-
-
-
-Build only the audit model and upstream dependencies:
-
-
-
-```powershell
-
-dbt build --select +mart\_load\_audit --no-partial-parse
-
-```
-
-
-
-Generate dbt docs:
-
-
-
-```powershell
-
-dbt docs generate
-
-dbt docs serve
-
-```
-
-
-
-\## dbt Data Quality Checks
-
-
-
-The project includes dbt tests for:
-
-
-
-\* Not-null checks
-
-\* Unique keys
-
-\* Accepted values
-
-\* Source freshness
-
-\* Amount reconciliation
-
-\* Load reconciliation
-
-
-
-Examples:
-
-
+The project uses separate Snowflake warehouses to isolate development, transformation, and mart workloads.
 
 ```text
-
-sales\_event\_key must be unique
-
-order\_id must not be null
-
-customer\_id must not be null
-
-order\_status must be one of COMPLETED, PENDING, CANCELLED, REFUNDED
-
-gross\_amount must reconcile with quantity \* unit\_price
-
-net\_amount must reconcile with gross\_amount - discount\_amount
-
-raw file row count must match fact table row count
-
+WH_DBT_DEV         → local development, dbt debug, CI validation
+WH_DBT_TRANSFORM   → staging and intermediate models
+WH_DBT_MARTS       → facts, dimensions, KPI marts
 ```
 
+This design provides cost visibility and workload separation without over-engineering the project.
 
+## Data Quality Checks
 
-\## Load Audit Mart
+The project includes dbt tests for both technical and business quality.
 
+### Technical Data Quality
 
+* Not-null checks
+* Unique key checks
+* Accepted values checks
+* Source freshness checks
 
-The model `mart\_load\_audit` reconciles raw file loads against the transformed fact table.
+### Business Data Quality
 
+* Gross amount reconciliation
+* Net amount reconciliation
+* Raw-to-fact row count reconciliation
+* Source file load audit
 
-
-It answers:
-
-
+Example validations:
 
 ```text
-
-Did every file loaded by Snowpipe reach the fact table correctly?
-
+gross_amount = quantity * unit_price
+net_amount = gross_amount - discount_amount
+raw_row_count = fact_row_count
+order_status IN ('COMPLETED', 'PENDING', 'CANCELLED', 'REFUNDED')
 ```
 
+## Load Reconciliation
 
+The `mart_load_audit` model validates whether each Snowpipe-loaded file is represented correctly in the transformed fact table.
 
-Example query:
+It compares:
 
-
-
-```sql
-
-SELECT \*
-
-FROM SYNTHETIC\_DATA.MARTS.MART\_LOAD\_AUDIT
-
-ORDER BY LAST\_LOADED\_AT DESC;
-
+```text
+RAW.SALES_RAW row count by source_file_name
+        vs
+MARTS.FCT_SALES row count by source_file_name
 ```
-
-
 
 Expected result:
 
-
-
 ```text
-
-RECONCILIATION\_STATUS = MATCHED
-
+RECONCILIATION_STATUS = MATCHED
 ```
 
+Example query:
 
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT
+ORDER BY LAST_LOADED_AT DESC;
+```
 
 Summary validation:
 
-
-
 ```sql
-
 SELECT
-
-&#x20;   COUNT(\*) AS TOTAL\_FILES,
-
-&#x20;   SUM(RAW\_ROW\_COUNT) AS TOTAL\_RAW\_ROWS,
-
-&#x20;   SUM(FACT\_ROW\_COUNT) AS TOTAL\_FACT\_ROWS,
-
-&#x20;   SUM(ROW\_COUNT\_DIFFERENCE) AS TOTAL\_DIFFERENCE
-
-FROM SYNTHETIC\_DATA.MARTS.MART\_LOAD\_AUDIT;
-
+    COUNT(*) AS total_files,
+    SUM(raw_row_count) AS total_raw_rows,
+    SUM(fact_row_count) AS total_fact_rows,
+    SUM(row_count_difference) AS total_difference
+FROM SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT;
 ```
-
-
 
 Expected:
 
-
-
 ```text
-
-TOTAL\_DIFFERENCE = 0
-
+TOTAL_DIFFERENCE = 0
 ```
 
+## Airflow Orchestration
 
-
-\## Airflow Orchestration
-
-
-
-Airflow orchestrates the end-to-end ELT flow.
-
-
+Airflow orchestrates the ELT workflow.
 
 DAG:
 
-
-
 ```text
-
-synthetic\_sales\_full\_elt
-
+synthetic_sales_full_elt
 ```
-
-
 
 Task flow:
 
+```text
+generate_task
+    ↓
+validate_task
+    ↓
+upload_task
+    ↓
+wait_for_snowpipe_task
+    ↓
+dbt_build_task
+```
 
+Optional observability task:
 
 ```text
-
-generate\_task
-
-&#x20;   ↓
-
-validate\_task
-
-&#x20;   ↓
-
-upload\_task
-
-&#x20;   ↓
-
-wait\_for\_snowpipe\_task
-
-&#x20;   ↓
-
-dbt\_build\_task
-
+dbt_source_freshness_task
 ```
 
+During development, source freshness can be treated as a monitoring task instead of a blocking step. Once ingestion timing is stable, it can be promoted into a blocking data quality gate.
 
+## GitHub Actions CI/CD
 
-Optional monitoring task:
+The project includes GitHub Actions workflows for automated validation.
 
-
-
-```text
-
-dbt\_source\_freshness\_task
-
-```
-
-
-
-During development, source freshness can be treated as monitoring instead of a blocking step. Once ingestion timing is stable, it can be promoted into a blocking quality gate.
-
-
-
-\## Running Airflow with Docker Compose
-
-
-
-Start Airflow:
-
-
-
-```powershell
-
-cd C:\\dev\\synthetic-data-generator
-
-docker compose up -d --build
-
-```
-
-
-
-Check running containers:
-
-
-
-```powershell
-
-docker compose ps
-
-```
-
-
-
-View scheduler logs:
-
-
-
-```powershell
-
-docker compose logs -f airflow-scheduler
-
-```
-
-
-
-Open Airflow:
-
-
-
-```text
-
-http://localhost:8080
-
-```
-
-
-
-Default login:
-
-
-
-```text
-
-Username: airflow
-
-Password: airflow
-
-```
-
-
-
-Stop Airflow:
-
-
-
-```powershell
-
-docker compose down
-
-```
-
-
-
-\## GitHub Actions CI/CD
-
-
-
-This project includes GitHub Actions workflows for CI/CD.
-
-
-
-\### CI Workflow
-
-
+### CI Workflow
 
 File:
 
-
-
 ```text
-
 .github/workflows/ci.yml
-
 ```
-
-
 
 Purpose:
 
+* Install Python 3.11
+* Install project dependencies
+* Validate Python modules
+* Generate dbt `profiles.yml` from GitHub Secrets
+* Run `dbt debug`
+* Run `dbt parse`
+* Run `dbt compile`
+* Run `dbt build --empty`
 
-
-\* Install Python 3.11
-
-\* Install dependencies
-
-\* Validate Python imports
-
-\* Run dbt debug
-
-\* Run dbt parse
-
-\* Run dbt compile
-
-\* Run dbt build dry-run or empty build
-
-
-
-\### CD Workflow
-
-
+### CD Workflow
 
 File:
 
-
-
 ```text
-
-.github/workflows/dbt\_deploy.yml
-
+.github/workflows/dbt_deploy.yml
 ```
-
-
 
 Purpose:
 
+* Run dbt build against Snowflake
+* Validate dbt models after merge to main
+* Support manual deployment through `workflow_dispatch`
 
+## Security and Credential Handling
 
-\* Run dbt against Snowflake
+Credentials are not hardcoded in the project.
 
-\* Check source freshness
+The project uses:
 
-\* Build staging, intermediate, and mart models
-
-\* Support manual trigger through GitHub Actions
-
-
-
-\## GitHub Secrets
-
-
-
-Configure these secrets in GitHub:
-
-
-
-```text
-
-SNOWFLAKE\_ACCOUNT
-
-SNOWFLAKE\_USER
-
-SNOWFLAKE\_PASSWORD
-
-SNOWFLAKE\_ROLE
-
-SNOWFLAKE\_WAREHOUSE
-
-SNOWFLAKE\_DATABASE
-
-AWS\_ACCESS\_KEY\_ID
-
-AWS\_SECRET\_ACCESS\_KEY
-
-AWS\_DEFAULT\_REGION
-
-```
-
-
-
-Recommended values:
-
-
-
-```text
-
-SNOWFLAKE\_ROLE=SYSADMIN
-
-SNOWFLAKE\_WAREHOUSE=WH\_DBT\_DEV
-
-SNOWFLAKE\_DATABASE=SYNTHETIC\_DATA
-
-AWS\_DEFAULT\_REGION=ap-southeast-1
-
-```
-
-
-
-\## Local Development Workflow
-
-
-
-Recommended development flow:
-
-
-
-```text
-
-Create feature branch
-
-&#x20;       ↓
-
-Update Python/dbt/Airflow code
-
-&#x20;       ↓
-
-Run local dbt parse/build
-
-&#x20;       ↓
-
-Run Airflow DAG locally
-
-&#x20;       ↓
-
-Commit changes
-
-&#x20;       ↓
-
-Push to GitHub
-
-&#x20;       ↓
-
-GitHub Actions validates code
-
-&#x20;       ↓
-
-Merge to main
-
-```
-
-
-
-Example commands:
-
-
-
-```powershell
-
-git checkout -b feature/add-new-sales-mart
-
-
-
-cd C:\\dev\\synthetic-data-generator\\dbt\_project
-
-dbt parse --no-partial-parse
-
-dbt build --selector transform\_pipeline --no-partial-parse
-
-
-
-cd C:\\dev\\synthetic-data-generator
-
-git status
-
-git add .
-
-git commit -m "Add new sales mart"
-
-git push origin feature/add-new-sales-mart
-
-```
-
-
-
-\## Useful Validation Queries
-
-
-
-Check raw row count:
-
-
-
-```sql
-
-SELECT COUNT(\*) AS RAW\_ROW\_COUNT
-
-FROM SYNTHETIC\_DATA.RAW.SALES\_RAW;
-
-```
-
-
-
-Check staging row count:
-
-
-
-```sql
-
-SELECT COUNT(\*) AS STAGING\_ROW\_COUNT
-
-FROM SYNTHETIC\_DATA.STAGING.STG\_SALES;
-
-```
-
-
-
-Check intermediate row count:
-
-
-
-```sql
-
-SELECT COUNT(\*) AS INTERMEDIATE\_ROW\_COUNT
-
-FROM SYNTHETIC\_DATA.INTERMEDIATE.INT\_SALES\_ENRICHED;
-
-```
-
-
-
-Check fact row count:
-
-
-
-```sql
-
-SELECT COUNT(\*) AS FACT\_ROW\_COUNT
-
-FROM SYNTHETIC\_DATA.MARTS.FCT\_SALES;
-
-```
-
-
-
-Check latest daily KPIs:
-
-
-
-```sql
-
-SELECT \*
-
-FROM SYNTHETIC\_DATA.MARTS.MART\_SALES\_DAILY\_KPI
-
-ORDER BY ORDER\_DATE DESC
-
-LIMIT 20;
-
-```
-
-
-
-Check customer KPIs:
-
-
-
-```sql
-
-SELECT \*
-
-FROM SYNTHETIC\_DATA.MARTS.MART\_CUSTOMER\_SALES\_KPI
-
-ORDER BY COMPLETED\_NET\_SALES\_AMOUNT DESC
-
-LIMIT 20;
-
-```
-
-
-
-Check load audit:
-
-
-
-```sql
-
-SELECT \*
-
-FROM SYNTHETIC\_DATA.MARTS.MART\_LOAD\_AUDIT
-
-ORDER BY LAST\_LOADED\_AT DESC;
-
-```
-
-
-
-\## Troubleshooting
-
-
-
-\### Docker is not recognized
-
-
-
-Error:
-
-
-
-```text
-
-docker: The term 'docker' is not recognized
-
-```
-
-
-
-Fix:
-
-
-
-\* Install Docker Desktop
-
-\* Start Docker Desktop
-
-\* Restart PowerShell
-
-\* Run:
-
-
-
-```powershell
-
-docker --version
-
-docker compose version
-
-```
-
-
-
-\### Airflow cannot import pipeline module
-
-
-
-Error:
-
-
-
-```text
-
-ModuleNotFoundError: No module named 'pipeline'
-
-```
-
-
-
-Fix:
-
-
-
-Make sure `docker-compose.yaml` mounts the pipeline folder:
-
-
-
-```yaml
-
-\- ${AIRFLOW\_PROJ\_DIR:-.}/pipeline:/opt/airflow/pipeline
-
-```
-
-
-
-Also set:
-
-
-
-```yaml
-
-PYTHONPATH: /opt/airflow
-
-```
-
-
-
-Restart Airflow:
-
-
-
-```powershell
-
-docker compose down
-
-docker compose up -d --build
-
-```
-
-
-
-\### dbt cannot connect to Snowflake
-
-
-
-Check your Snowflake account identifier.
-
-
-
-Correct examples:
-
-
-
-```text
-
-CYOVZFT-UF47725
-
-```
-
-
-
-or:
-
-
-
-```text
-
-account\_locator.ap-southeast-1.aws
-
-```
-
-
-
-Do not include:
-
-
-
-```text
-
-https://
-
-.snowflakecomputing.com
-
-```
-
-
-
-\### dbt environment variable not found
-
-
-
-Error:
-
-
-
-```text
-
-Env var required but not provided: SNOWFLAKE\_ACCOUNT
-
-```
-
-
-
-Fix local PowerShell:
-
-
-
-```powershell
-
-$env:SNOWFLAKE\_ACCOUNT="your\_account"
-
-$env:SNOWFLAKE\_USER="your\_user"
-
-$env:SNOWFLAKE\_PASSWORD="your\_password"
-
-$env:SNOWFLAKE\_ROLE="SYSADMIN"
-
-$env:SNOWFLAKE\_WAREHOUSE="WH\_DBT\_DEV"
-
-$env:SNOWFLAKE\_DATABASE="SYNTHETIC\_DATA"
-
-```
-
-
-
-\### dbt duplicate exposure error
-
-
-
-Error:
-
-
-
-```text
-
-dbt found two exposures with the name sales\_daily\_kpi\_dashboard
-
-```
-
-
-
-Fix:
-
-
-
-Keep only one exposure file.
-
-
-
-Recommended:
-
-
-
-```text
-
-models/marts/exposures.yml
-
-```
-
-
-
-Delete duplicate:
-
-
-
-```powershell
-
-Remove-Item models\\marts\\exposure.yml
-
-```
-
-
-
-\### dbt partial parsing error
-
-
-
-Error example:
-
-
-
-```text
-
-KeyError: synthetic\_sales\_analytics://macros/generate\_schema\_name.sql
-
-```
-
-
-
-Fix:
-
-
-
-```powershell
-
-cd C:\\dev\\synthetic-data-generator\\dbt\_project
-
-
-
-Remove-Item -Recurse -Force target -ErrorAction SilentlyContinue
-
-Remove-Item -Recurse -Force logs -ErrorAction SilentlyContinue
-
-
-
-dbt parse --no-partial-parse
-
-```
-
-
-
-Inside Docker:
-
-
-
-```powershell
-
-docker compose exec airflow-scheduler rm -rf /opt/airflow/dbt\_project/target
-
-docker compose exec airflow-scheduler rm -rf /opt/airflow/dbt\_project/logs
-
-```
-
-
-
-\### Snowpipe did not load file
-
-
-
-Check pipe status:
-
-
-
-```sql
-
-SELECT SYSTEM$PIPE\_STATUS('SYNTHETIC\_DATA.RAW.SALES\_AUTO\_PIPE');
-
-```
-
-
-
-Check files in stage:
-
-
-
-```sql
-
-LIST @SYNTHETIC\_DATA.RAW.SALES\_S3\_STAGE;
-
-```
-
-
-
-Refresh pipe for recent files:
-
-
-
-```sql
-
-ALTER PIPE SYNTHETIC\_DATA.RAW.SALES\_AUTO\_PIPE REFRESH;
-
-```
-
-
-
-\### Source freshness failed
-
-
-
-Check latest raw load:
-
-
-
-```sql
-
-SELECT
-
-&#x20;   COUNT(\*) AS ROW\_COUNT,
-
-&#x20;   MAX(LOAD\_TS) AS LATEST\_LOAD\_TS,
-
-&#x20;   DATEDIFF('hour', MAX(LOAD\_TS), CURRENT\_TIMESTAMP()) AS HOURS\_SINCE\_LATEST\_LOAD
-
-FROM SYNTHETIC\_DATA.RAW.SALES\_RAW;
-
-```
-
-
-
-For development, use a relaxed freshness rule such as:
-
-
-
-```yaml
-
-warn\_after:
-
-&#x20; count: 3
-
-&#x20; period: day
-
-error\_after:
-
-&#x20; count: 7
-
-&#x20; period: day
-
-```
-
-
-
-Once the pipeline runs daily and consistently, tighten freshness to:
-
-
-
-```yaml
-
-warn\_after:
-
-&#x20; count: 26
-
-&#x20; period: hour
-
-error\_after:
-
-&#x20; count: 30
-
-&#x20; period: hour
-
-```
-
-
-
-\## Security Notes
-
-
-
-This project avoids hardcoding credentials in source code.
-
-
-
-Credentials should be managed through:
-
-
-
-\* Local `.env`
-
-\* PowerShell environment variables
-
-\* Docker Compose environment variables
-
-\* GitHub Actions secrets
-
-\* Snowflake storage integrations
-
-\* AWS IAM roles and policies
-
-
+* `.env` for local Docker/Airflow development
+* PowerShell environment variables for local dbt testing
+* GitHub Secrets for CI/CD
+* Snowflake storage integrations for secure S3 access
+* AWS IAM roles and policies for least-privilege access
 
 Do not commit:
 
-
-
 ```text
-
 .env
-
-set\_env.ps1
-
+set_env.ps1
 venv/
-
 venv311/
-
 output/
-
 logs/
-
-dbt\_project/target/
-
-dbt\_project/logs/
-
-dbt\_project/dbt\_packages/
-
+dbt_project/target/
+dbt_project/logs/
+dbt_project/dbt_packages/
 ```
 
+## GitHub Secrets
 
-
-\## .gitignore Recommendation
-
-
+Configure these in:
 
 ```text
-
-.env
-
-set\_env.ps1
-
-
-
-venv/
-
-venv311/
-
-\_\_pycache\_\_/
-
-\*.pyc
-
-
-
-output/
-
-logs/
-
-
-
-dbt\_project/target/
-
-dbt\_project/logs/
-
-dbt\_project/dbt\_packages/
-
-
-
-.DS\_Store
-
+GitHub Repository → Settings → Secrets and variables → Actions → Secrets
 ```
 
-
-
-\## Interview Talking Points
-
-
-
-\### Short Project Pitch
-
-
-
-I built an end-to-end ELT pipeline that generates synthetic sales data using Python, lands it in AWS S3, auto-ingests it into Snowflake using Snowpipe, and transforms it into analytics-ready models using dbt. Airflow orchestrates the workflow, and GitHub Actions provides CI/CD validation.
-
-
-
-\### Data Engineering Explanation
-
-
-
-The pipeline separates ingestion, storage, transformation, and reporting layers. Python handles data generation and file upload, S3 acts as the raw landing zone, Snowpipe performs event-driven ingestion into Snowflake, and dbt handles modular transformations across staging, intermediate, and mart layers.
-
-
-
-\### dbt Explanation
-
-
-
-The staging layer standardizes and deduplicates raw sales records. The intermediate layer applies reusable business logic such as completed-order flags and discount rate. The mart layer produces the fact table, daily KPI table, customer KPI table, and load audit table.
-
-
-
-\### Data Quality Explanation
-
-
-
-I added not-null, unique, accepted-values, source freshness, amount reconciliation, and load reconciliation tests. This ensures the data is technically valid and business-consistent before it is used for reporting.
-
-
-
-\### Workload Isolation Explanation
-
-
-
-I used a balanced workload isolation approach. Development uses a separate warehouse, staging and intermediate transformations share a transformation warehouse, and mart models use a dedicated mart warehouse. This gives cost visibility and workload separation without over-engineering the project.
-
-
-
-\### CI/CD Explanation
-
-
-
-GitHub Actions validates Python and dbt changes before merge. The CI workflow checks Python imports, dbt parsing, compilation, and build validation. The deployment workflow can run dbt build against Snowflake using GitHub repository secrets.
-
-
-
-\## Final Architecture Summary
-
-
+Required secrets:
 
 ```text
-
-Airflow
-
-&#x20; └── Orchestrates the pipeline
-
-
-
-Python
-
-&#x20; └── Generates synthetic sales data
-
-
-
-AWS S3
-
-&#x20; └── Stores raw CSV files
-
-
-
-Snowpipe
-
-&#x20; └── Auto-ingests S3 files into Snowflake RAW
-
-
-
-Snowflake
-
-&#x20; └── Stores raw, staging, intermediate, and mart tables
-
-
-
-dbt
-
-&#x20; └── Builds transformation models and tests
-
-
-
-GitHub Actions
-
-&#x20; └── Provides CI/CD validation
-
+SNOWFLAKE_ACCOUNT
+SNOWFLAKE_USER
+SNOWFLAKE_PASSWORD
+SNOWFLAKE_ROLE
+SNOWFLAKE_WAREHOUSE
+SNOWFLAKE_DATABASE
 ```
 
+Recommended values:
 
+```text
+SNOWFLAKE_ACCOUNT=CYOVZFT-UF47725
+SNOWFLAKE_ROLE=SYSADMIN
+SNOWFLAKE_WAREHOUSE=WH_DBT_DEV
+SNOWFLAKE_DATABASE=SYNTHETIC_DATA
+```
 
-\## Current Status
+The `SNOWFLAKE_ACCOUNT` value should contain only the account identifier.
 
+Use:
 
+```text
+CYOVZFT-UF47725
+```
+
+Do not use:
+
+```text
+https://CYOVZFT-UF47725.snowflakecomputing.com
+CYOVZFT-UF47725.ap-southeast-1.aws
+```
+
+## Local Setup
+
+### 1. Clone the Repository
+
+```powershell
+git clone https://github.com/vinski-dev/synthetic-data-generator.git
+cd synthetic-data-generator
+```
+
+### 2. Create Python Virtual Environment
+
+```powershell
+py -3.11 -m venv venv311
+.\venv311\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### 3. Configure Local Environment Variables
+
+Create a `.env` file in the project root.
+
+```env
+AIRFLOW_UID=50000
+
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_DEFAULT_REGION=ap-southeast-1
+
+SNOWFLAKE_ACCOUNT=your_snowflake_account_identifier
+SNOWFLAKE_USER=your_snowflake_username
+SNOWFLAKE_PASSWORD=your_snowflake_password
+SNOWFLAKE_ROLE=SYSADMIN
+SNOWFLAKE_WAREHOUSE=WH_DBT_DEV
+SNOWFLAKE_DATABASE=SYNTHETIC_DATA
+```
+
+## Running the Pipeline Manually
+
+Generate synthetic sales data and upload to S3:
+
+```powershell
+python main.py
+```
+
+Expected behavior:
+
+```text
+Generate 100,000 synthetic sales records
+Validate generated data
+Write CSV to output folder
+Upload CSV to S3
+```
+
+## Running dbt Locally
+
+Go to the dbt project folder:
+
+```powershell
+cd dbt_project
+```
+
+Run dbt debug:
+
+```powershell
+dbt debug --no-partial-parse
+```
+
+Parse project:
+
+```powershell
+dbt parse --no-partial-parse
+```
+
+Build dbt models:
+
+```powershell
+dbt build --selector transform_pipeline --no-partial-parse
+```
+
+Run source freshness:
+
+```powershell
+dbt source freshness --no-partial-parse
+```
+
+Generate dbt docs:
+
+```powershell
+dbt docs generate
+dbt docs serve
+```
+
+## Running Airflow Locally
+
+Start Airflow using Docker Compose:
+
+```powershell
+docker compose up -d --build
+```
+
+Check containers:
+
+```powershell
+docker compose ps
+```
+
+View scheduler logs:
+
+```powershell
+docker compose logs -f airflow-scheduler
+```
+
+Open Airflow UI:
+
+```text
+http://localhost:8080
+```
+
+Default login:
+
+```text
+Username: airflow
+Password: airflow
+```
+
+Stop Airflow:
+
+```powershell
+docker compose down
+```
+
+## Snowflake Validation Queries
+
+Check raw load:
+
+```sql
+SELECT
+    SOURCE_FILE_NAME,
+    COUNT(*) AS row_count,
+    MIN(LOAD_TS) AS first_loaded_at,
+    MAX(LOAD_TS) AS last_loaded_at
+FROM SYNTHETIC_DATA.RAW.SALES_RAW
+GROUP BY SOURCE_FILE_NAME
+ORDER BY last_loaded_at DESC;
+```
+
+Check dbt model row counts:
+
+```sql
+SELECT COUNT(*) AS staging_count
+FROM SYNTHETIC_DATA.STAGING.STG_SALES;
+
+SELECT COUNT(*) AS intermediate_count
+FROM SYNTHETIC_DATA.INTERMEDIATE.INT_SALES_ENRICHED;
+
+SELECT COUNT(*) AS fact_count
+FROM SYNTHETIC_DATA.MARTS.FCT_SALES;
+```
+
+Check daily KPI mart:
+
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.MART_SALES_DAILY_KPI
+ORDER BY ORDER_DATE DESC
+LIMIT 20;
+```
+
+Check customer KPI mart:
+
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.MART_CUSTOMER_SALES_KPI
+ORDER BY COMPLETED_NET_SALES_AMOUNT DESC
+LIMIT 20;
+```
+
+Check load audit:
+
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT
+ORDER BY LAST_LOADED_AT DESC;
+```
+
+## Troubleshooting
+
+### Docker command not recognized
+
+```text
+docker: The term 'docker' is not recognized
+```
+
+Fix:
+
+* Install Docker Desktop
+* Start Docker Desktop
+* Restart PowerShell
+* Validate:
+
+```powershell
+docker --version
+docker compose version
+```
+
+### Airflow cannot import pipeline module
+
+```text
+ModuleNotFoundError: No module named 'pipeline'
+```
+
+Fix:
+
+* Confirm `pipeline/` is mounted in `docker-compose.yaml`
+* Confirm `PYTHONPATH=/opt/airflow`
+* Restart Airflow:
+
+```powershell
+docker compose down
+docker compose up -d --build
+```
+
+### dbt profiles.yml not found in GitHub Actions
+
+Fix:
+
+* Generate `profiles.yml` inside the GitHub Actions workflow
+* Use GitHub Secrets for Snowflake credentials
+* Run dbt commands with:
+
+```text
+--profiles-dir .
+```
+
+### Snowflake account identifier error
+
+Use only the account identifier:
+
+```text
+CYOVZFT-UF47725
+```
+
+Do not include dots, slashes, region, URL, or `snowflakecomputing.com`.
+
+### dbt source freshness failed
+
+Check latest raw load:
+
+```sql
+SELECT
+    COUNT(*) AS row_count,
+    MAX(LOAD_TS) AS latest_load_ts,
+    DATEDIFF('hour', MAX(LOAD_TS), CURRENT_TIMESTAMP()) AS hours_since_latest_load
+FROM SYNTHETIC_DATA.RAW.SALES_RAW;
+```
+
+For development, use a relaxed freshness SLA. Once the ingestion schedule is stable, tighten the freshness rule.
+
+### Snowpipe did not load files
+
+Check pipe status:
+
+```sql
+SELECT SYSTEM$PIPE_STATUS('SYNTHETIC_DATA.RAW.SALES_AUTO_PIPE');
+```
+
+Check files in stage:
+
+```sql
+LIST @SYNTHETIC_DATA.RAW.SALES_S3_STAGE;
+```
+
+Refresh recent staged files:
+
+```sql
+ALTER PIPE SYNTHETIC_DATA.RAW.SALES_AUTO_PIPE REFRESH;
+```
+
+## Current Implementation Status
 
 Implemented:
 
+* Python synthetic sales data generator
+* Local CSV output
+* AWS S3 upload
+* Snowpipe auto-ingestion
+* Snowflake raw table
+* dbt staging model
+* dbt intermediate model
+* dbt mart models
+* dbt tests
+* Source freshness
+* Load audit mart
+* Airflow orchestration
+* GitHub Actions CI/CD
 
+## Future Enhancements
 
-```text
+Potential next improvements:
 
-Python synthetic sales generator
+* Add Terraform for AWS and Snowflake infrastructure
+* Add Slack or email alerting for Airflow failures
+* Add Power BI, Tableau, or Streamlit dashboard
+* Add dbt Cloud deployment job
+* Add dimensional date and product models
+* Add backfill workflow
+* Add Great Expectations or Soda data quality checks
+* Add data lineage screenshots from dbt docs
+* Add cost monitoring queries for Snowflake warehouses
 
-AWS S3 upload
+## Interview-Ready Summary
 
-Snowpipe auto-ingestion
+I built an end-to-end ELT pipeline that generates synthetic sales data using Python, lands the files in AWS S3, auto-ingests them into Snowflake using Snowpipe, and transforms the raw data into analytics-ready models using dbt.
 
-Snowflake raw table
-
-dbt staging model
-
-dbt intermediate model
-
-dbt mart models
-
-dbt tests
-
-dbt source freshness
-
-dbt exposures
-
-dbt selectors
-
-Airflow orchestration
-
-GitHub Actions CI/CD
-
-```
-
-
-
-Possible future enhancements:
-
-
-
-```text
-
-Add Great Expectations or Soda checks
-
-Add Slack or email alerting
-
-Add dashboard in Power BI, Tableau, or Streamlit
-
-Add Terraform for AWS and Snowflake infrastructure
-
-Add dbt Cloud deployment
-
-Add dimensional product and date models
-
-Add incremental backfill strategy
-
-Add data lineage screenshots from dbt docs
-
-```
-
-
-
+Airflow orchestrates the workflow from data generation to transformation, while GitHub Actions provides CI/CD validation. The dbt project includes staging, intermediate, and mart layers, along with data quality tests, source freshness checks, and load reconciliation to ensure the final KPI tables are reliable and business-ready.
