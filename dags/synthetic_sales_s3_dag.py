@@ -91,7 +91,7 @@ def synthetic_sales_full_elt():
 
             max_attempts = 60
             sleep_seconds = 20
-            expected_rows = 100000
+           
 
             for attempt in range(1, max_attempts + 1):
                 print(f"Snowpipe check attempt {attempt}/{max_attempts}")
