@@ -1506,6 +1506,15 @@ Implemented:
 * Airflow orchestration
 * GitHub Actions CI/CD
 
+## Snowflake Cost Monitoring
+
+This project includes Snowflake cost monitoring queries for the project warehouses:
+
+WH_DBT_DEV
+WH_DBT_TRANSFORM
+WH_DBT_MARTS
+
+Added Snowflake cost monitoring queries using Account Usage views to track credit usage by warehouse, query volume, long-running queries, and high-scan queries. Since the project separates development, transformation, and mart workloads into different warehouses, these queries help monitor cost by workload and identify optimization opportunities such as incremental models, query pruning, auto-suspend tuning, and warehouse resizing.
 
 ## Future Enhancements
 
@@ -1515,8 +1524,6 @@ Potential next improvements:
 * Add Slack or email alerting for Airflow failures
 * Add Power BI, Tableau, or Streamlit dashboard**
 * Add dbt Cloud deployment job
-* Add dimensional date and product models**
-* Add backfill workflow**
 * Add Great Expectations or Soda data quality checks
 * Add data lineage screenshots from dbt docs
 * Add cost monitoring queries for Snowflake warehouses
