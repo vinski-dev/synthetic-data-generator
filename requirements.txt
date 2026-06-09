@@ -4,3 +4,4 @@ boto3
 numpy
 dbt-snowflake
 snowflake-connector-python
+streamlit

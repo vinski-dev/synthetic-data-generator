@@ -466,6 +466,238 @@ I simulated late-arriving data by generating sales files that land in S3 today b
 
 This pattern is important because real production pipelines often receive delayed files, retries, or corrections from source systems. By using `load_ts` for incremental processing and `order_date` for business reporting, the pipeline avoids missing late-arriving events.
 
+## Backfill Window
+
+This project includes a manual backfill workflow for generating and processing historical sales data across a selected business date range.
+
+A backfill window is a controlled date range used to reload, regenerate, or correct historical data. In this project, the backfill workflow creates synthetic sales records for specific historical `order_timestamp` dates, uploads the files to S3, lets Snowpipe ingest them into Snowflake, and then runs dbt to update the fact and KPI marts.
+
+### Backfill Use Case
+
+Backfills are common in production data pipelines when:
+
+* A source system sends delayed historical files
+* A prior ingestion failed and needs to be replayed
+* Business logic changes require historical KPI recalculation
+* A data correction needs to be applied to previous reporting dates
+* Late-arriving records need to be included in historical dashboards
+
+### Backfill Flow
+
+```text
+backfill_sales.py
+    ↓
+Generate sales records for each business date
+    ↓
+Validate generated data
+    ↓
+Save backfill CSV files locally
+    ↓
+Upload files to S3 under sales/raw/backfill/
+    ↓
+Snowpipe auto-ingests files into RAW.SALES_RAW
+    ↓
+dbt processes records using LOAD_TS
+    ↓
+Historical fact and KPI tables are updated by ORDER_DATE
+```
+
+### Backfill File Path Pattern
+
+Backfill files are uploaded to S3 using this pattern:
+
+```text
+sales/raw/backfill/business_date=YYYY-MM-DD/
+```
+
+Example:
+
+```text
+s3://vinski-synthetic-data-bucket/sales/raw/backfill/business_date=2026-05-01/sales_backfill_20260501_20260609_120000.csv
+```
+
+This separates backfill files from normal daily files while keeping them under the same Snowpipe-monitored raw prefix.
+
+### Run Backfill Locally
+
+From the project root:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+python backfill_sales.py --start-date 2026-05-01 --end-date 2026-05-03 --records-per-day 1000
+```
+
+Example output:
+
+```text
+Starting sales backfill workflow...
+Backfill date range: 2026-05-01 to 2026-05-03
+Records per day: 1,000
+
+Processing business date: 2026-05-01
+Generated records for 2026-05-01: 1,000
+Data validation passed.
+Backfill CSV file created.
+Uploaded backfill file to S3.
+
+Processing business date: 2026-05-02
+Generated records for 2026-05-02: 1,000
+Data validation passed.
+Backfill CSV file created.
+Uploaded backfill file to S3.
+
+Processing business date: 2026-05-03
+Generated records for 2026-05-03: 1,000
+Data validation passed.
+Backfill CSV file created.
+Uploaded backfill file to S3.
+
+Backfill workflow completed successfully.
+```
+
+### Run Backfill Through Airflow
+
+The project can also support a manual Airflow DAG for backfill execution.
+
+DAG:
+
+```text
+sales_backfill_workflow
+```
+
+Recommended Airflow parameters:
+
+```json
+{
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-03",
+  "records_per_day": 1000
+}
+```
+
+Airflow task flow:
+
+```text
+generate_and_upload_backfill_files
+    ↓
+wait_for_snowpipe_backfill
+    ↓
+run_dbt_build
+```
+
+The Airflow backfill workflow is manual by design because backfills should usually be intentional, controlled, and auditable.
+
+### Validate Snowpipe Loaded Backfill Files
+
+Run this in Snowflake:
+
+```sql
+SELECT
+    SOURCE_FILE_NAME,
+    COUNT(*) AS row_count,
+    MIN(ORDER_TIMESTAMP) AS min_order_timestamp,
+    MAX(ORDER_TIMESTAMP) AS max_order_timestamp,
+    MAX(LOAD_TS) AS latest_load_ts
+FROM SYNTHETIC_DATA.RAW.SALES_RAW
+WHERE SOURCE_FILE_NAME ILIKE '%backfill%'
+GROUP BY SOURCE_FILE_NAME
+ORDER BY latest_load_ts DESC;
+```
+
+Expected result:
+
+```text
+Each backfill file should have the expected row count.
+ORDER_TIMESTAMP should match the historical business date.
+LOAD_TS should reflect the recent ingestion time.
+```
+
+### Run dbt After Backfill
+
+After Snowpipe loads the backfill files, run dbt:
+
+```powershell
+cd C:\dev\synthetic-data-generator\dbt_project
+dbt build --selector transform_pipeline --no-partial-parse
+```
+
+The dbt fact model should process the backfill records because incremental logic is based on `LOAD_TS`.
+
+### Validate Backfill Reached the Fact Table
+
+```sql
+SELECT
+    SOURCE_FILE_NAME,
+    COUNT(*) AS fact_row_count,
+    MIN(ORDER_DATE) AS min_order_date,
+    MAX(ORDER_DATE) AS max_order_date,
+    MAX(LOAD_TS) AS latest_load_ts
+FROM SYNTHETIC_DATA.MARTS.FCT_SALES
+WHERE SOURCE_FILE_NAME ILIKE '%backfill%'
+GROUP BY SOURCE_FILE_NAME
+ORDER BY latest_load_ts DESC;
+```
+
+Expected result:
+
+```text
+FACT_ROW_COUNT should match the generated backfill record count.
+ORDER_DATE should match the historical business date.
+LOAD_TS should reflect the recent processing timestamp.
+```
+
+### Validate Historical KPI Dates Were Updated
+
+```sql
+SELECT
+    ORDER_DATE,
+    TOTAL_ORDERS,
+    COMPLETED_ORDERS,
+    NET_SALES_AMOUNT,
+    LATEST_LOAD_TS
+FROM SYNTHETIC_DATA.MARTS.MART_SALES_DAILY_KPI
+WHERE ORDER_DATE BETWEEN '2026-05-01' AND '2026-05-03'
+ORDER BY ORDER_DATE;
+```
+
+This confirms that the historical reporting dates affected by the backfill window were updated in the KPI mart.
+
+### Backfill Design Pattern
+
+This project separates ingestion time from business event time:
+
+```text
+LOAD_TS      = when Snowflake ingested the record
+ORDER_DATE   = when the business event happened
+```
+
+Recommended pattern:
+
+```text
+Use LOAD_TS for incremental processing.
+Use ORDER_DATE for reporting and KPI aggregation.
+```
+
+This prevents late-arriving or backfilled records from being missed by dbt incremental models.
+
+### Backfill Safety Considerations
+
+For production-style backfills, the recommended controls are:
+
+* Use explicit start and end dates
+* Keep backfill runs manual or approval-based
+* Log uploaded files and row counts
+* Validate Snowpipe ingestion before running dbt
+* Reconcile raw row counts against fact table row counts
+* Rebuild affected downstream marts after backfill
+* Avoid filtering incremental models only by business date
+
+### Interview Explanation
+
+I added a backfill workflow to simulate how a production data pipeline handles historical reloads or corrections. The workflow accepts a start date, end date, and records-per-day parameter, generates historical sales records for each business date, uploads them to S3, waits for Snowpipe ingestion, and runs dbt to update the downstream fact and KPI marts.
+
+The important design choice is that dbt incremental processing uses `LOAD_TS`, while reporting uses `ORDER_DATE`. This allows the pipeline to capture records that arrive today but belong to prior reporting periods, which is a common real-world data engineering scenario.
+
 
 ### Technical Data Quality
 
@@ -670,6 +902,131 @@ Do not use:
 https://CYOVZFT-UF47725.snowflakecomputing.com
 CYOVZFT-UF47725.ap-southeast-1.aws
 ```
+## Streamlit Dashboard
+
+This project includes a Streamlit dashboard that connects directly to the Snowflake mart layer created by dbt.
+
+The dashboard provides a business-facing view of the transformed sales data and demonstrates the final consumption layer of the ELT pipeline.
+
+### Dashboard Data Sources
+
+The dashboard reads from the following Snowflake mart tables:
+
+```text
+SYNTHETIC_DATA.MARTS.MART_SALES_DAILY_KPI
+SYNTHETIC_DATA.MARTS.MART_CUSTOMER_SALES_KPI
+SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT
+```
+
+### Dashboard Features
+
+The Streamlit dashboard includes:
+
+* Total orders
+* Completed orders
+* Unique customers
+* Net sales amount
+* Average order value
+* Daily net sales trend
+* Daily order status breakdown
+* Top customers by completed net sales
+* Load audit and reconciliation status
+
+### Dashboard Architecture
+
+```text
+Snowflake MARTS Layer
+    ↓
+Streamlit Snowflake Connector
+    ↓
+Pandas DataFrames
+    ↓
+Streamlit KPI Cards and Charts
+    ↓
+Business-facing Sales Dashboard
+```
+
+### Run the Dashboard Locally
+
+From the project root:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+.\venv311\Scripts\Activate.ps1
+python -m streamlit run dashboard\streamlit_app.py
+```
+
+The dashboard will run locally at:
+
+```text
+http://localhost:8501
+```
+
+### Streamlit Credentials
+
+For local development, Streamlit reads Snowflake credentials from:
+
+```text
+dashboard/.streamlit/secrets.toml
+```
+
+Example:
+
+```toml
+SNOWFLAKE_ACCOUNT = "your_snowflake_account"
+SNOWFLAKE_USER = "your_snowflake_username"
+SNOWFLAKE_PASSWORD = "your_snowflake_password"
+SNOWFLAKE_ROLE = "SYSADMIN"
+SNOWFLAKE_WAREHOUSE = "WH_DBT_DEV"
+SNOWFLAKE_DATABASE = "SYNTHETIC_DATA"
+```
+
+This file should not be committed to GitHub.
+
+Make sure `.gitignore` includes:
+
+```text
+dashboard/.streamlit/secrets.toml
+```
+
+### Required Dashboard Dependencies
+
+The dashboard requires:
+
+```text
+streamlit
+snowflake-connector-python
+pandas
+```
+
+These should be included in `requirements.txt`.
+
+### Dashboard Use Case
+
+The dashboard completes the end-to-end analytics flow:
+
+```text
+Python synthetic data generation
+    ↓
+AWS S3 raw landing
+    ↓
+Snowpipe ingestion
+    ↓
+Snowflake raw table
+    ↓
+dbt staging, intermediate, and marts
+    ↓
+Streamlit dashboard
+```
+
+This demonstrates how raw data becomes business-facing analytics through a modern ELT pipeline.
+
+### Portfolio Explanation
+
+I added a Streamlit dashboard as the consumption layer of the pipeline. The dashboard connects to the Snowflake mart tables produced by dbt and visualizes daily sales KPIs, customer-level sales performance, and load reconciliation results.
+
+This completes the end-to-end data flow from ingestion to analytics: Python generates the data, S3 stores the raw files, Snowpipe loads them into Snowflake, dbt transforms them into marts, and Streamlit presents the final business metrics.
+
 
 ## Local Setup
 
@@ -968,14 +1325,7 @@ Implemented:
 * Airflow orchestration
 * GitHub Actions CI/CD
 
-## Backfill Workflow
 
-This project includes a manual backfill workflow for generating historical sales data and loading it through the same S3, Snowpipe, Snowflake, and dbt transformation path.
-
-Backfill files are uploaded under:
-
-```text
-sales/raw/backfill/business_date=YYYY-MM-DD/
 ## Future Enhancements
 
 Potential next improvements:
@@ -985,6 +1335,7 @@ Potential next improvements:
 * Add Power BI, Tableau, or Streamlit dashboard
 * Add dbt Cloud deployment job
 * Add dimensional date and product models
+* Add backfill workflow
 * Add Great Expectations or Soda data quality checks
 * Add data lineage screenshots from dbt docs
 * Add cost monitoring queries for Snowflake warehouses
