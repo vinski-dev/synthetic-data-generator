@@ -89,7 +89,7 @@ Sales KPI Tables
 | Containerization | Docker Compose       |
 | CI/CD            | GitHub Actions       |
 | Version Control  | Git / GitHub         |
-
+| Dashboard / BI   | Streamlit            |
 ## Business Use Case
 
 The project simulates a sales analytics pipeline for an e-commerce or retail-style business.
@@ -144,53 +144,49 @@ s3://vinski-synthetic-data-bucket/sales/raw/year=YYYY/month=MM/day=DD/file.csv
 ```text
 synthetic-data-generator/
 │
-├── dags/
-│   └── synthetic_sales_s3_dag.py
-│
-├── pipeline/
-│   ├── __init__.py
-│   └── sales_pipeline.py
-│
-├── dbt_project/
-│   ├── dbt_project.yml
-│   ├── selectors.yml
-│   │
-│   ├── macros/
-│   │   └── generate_schema_name.sql
-│   │
-│   ├── models/
-│   │   ├── staging/
-│   │   │   ├── src_sales.yml
-│   │   │   └── stg_sales.sql
-│   │   │
-│   │   ├── intermediate/
-│   │   │   ├── intermediate.yml
-│   │   │   └── int_sales_enriched.sql
-│   │   │
-│   │   └── marts/
-│   │       ├── fct_sales.sql
-│   │       ├── mart_sales_daily_kpi.sql
-│   │       ├── mart_customer_sales_kpi.sql
-│   │       ├── mart_load_audit.sql
-│   │       ├── marts.yml
-│   │       └── exposures.yml
-│   │
-│   └── tests/
-│       ├── assert_sales_amounts_reconcile.sql
-│       └── assert_load_audit_matched.sql
-│
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
 │       └── dbt_deploy.yml
 │
-├── output/
+├── config/
+│
+├── dags/
+│   ├── synthetic_sales_s3_dag.py
+│   └── sales_backfill_dag.py
+│
+├── dashboard/
+│   ├── streamlit_app.py
+│   └── .streamlit/
+│       └── secrets.toml.example
+│
+├── dbt_project/
+│   ├── dbt_project.yml
+│   ├── selectors.yml
+│   ├── macros/
+│   │   └── generate_schema_name.sql
+│   ├── models/
+│   │   ├── staging/
+│   │   ├── intermediate/
+│   │   └── marts/
+│   └── tests/
+│
+├── pipeline/
+│   ├── __init__.py
+│   └── sales_pipeline.py
+│
+├── plugins/
+│
+├── backfill_sales.py
 ├── config.py
+├── generate.py
+├── late_arriving.py
 ├── main.py
-├── requirements.txt
+│
 ├── Dockerfile
 ├── docker-compose.yaml
-├── .env.example
+├── requirements.txt
+├── requirements-dev.txt
 ├── .gitignore
 └── README.md
 ```
@@ -306,6 +302,191 @@ WH_DBT_MARTS       → facts, dimensions, KPI marts
 ```
 
 This design provides cost visibility and workload separation without over-engineering the project.
+
+## Dimensional Models
+
+The mart layer includes dimensional models to make the analytics layer more reusable, reporting-friendly, and closer to a traditional dimensional warehouse design.
+
+The dimensional models are:
+
+```text
+SYNTHETIC_DATA.MARTS.DIM_DATE
+SYNTHETIC_DATA.MARTS.DIM_PRODUCT_CATEGORIES
+```
+
+These models support the main sales fact and KPI marts:
+
+```text
+SYNTHETIC_DATA.MARTS.FCT_SALES
+SYNTHETIC_DATA.MARTS.MART_SALES_DAILY_KPI
+SYNTHETIC_DATA.MARTS.MART_CUSTOMER_SALES_KPI
+SYNTHETIC_DATA.MARTS.MART_PRODUCT_CATEGORY_SALES_KPI
+```
+
+### Dimensional Model Flow
+
+```text
+RAW.SALES_RAW
+    ↓
+STAGING.STG_SALES
+    ↓
+INTERMEDIATE.INT_SALES_ENRICHED
+    ↓
+MARTS.FCT_SALES
+    ├── MARTS.DIM_DATE
+    ├── MARTS.DIM_PRODUCT_CATEGORIES
+    ├── MARTS.MART_SALES_DAILY_KPI
+    ├── MARTS.MART_CUSTOMER_SALES_KPI
+    └── MARTS.MART_PRODUCT_CATEGORY_SALES_KPI
+```
+
+### Date Dimension
+
+Model:
+
+```text
+dbt_project/models/marts/dim_date.sql
+```
+
+Target table:
+
+```text
+SYNTHETIC_DATA.MARTS.DIM_DATE
+```
+
+The date dimension centralizes calendar logic so reporting tools and downstream users do not need to repeatedly calculate date attributes.
+
+Key columns include:
+
+```text
+date_day
+year_number
+quarter_number
+month_number
+month_name
+week_number
+day_of_month
+day_of_week_number
+day_of_week_name
+week_start_date
+month_start_date
+month_end_date
+quarter_start_date
+quarter_end_date
+year_start_date
+year_end_date
+is_weekend
+```
+
+This supports reporting by year, quarter, month, week, weekday, and weekend indicators.
+
+### Product Category Dimension
+
+Model:
+
+```text
+dbt_project/models/marts/dim_product_categories.sql
+```
+
+Target table:
+
+```text
+SYNTHETIC_DATA.MARTS.DIM_PRODUCT_CATEGORIES
+```
+
+The product category dimension provides a reusable product-category view derived from the sales fact table.
+
+Key columns include:
+
+```text
+product_category
+total_orders
+distinct_product_count
+first_order_date
+latest_order_date
+completed_net_sales_amount
+avg_completed_order_amount
+```
+
+This supports category-level analytics across product groups such as Electronics, Clothing, Home, Sports, Beauty, Books, and Toys.
+
+### Product Category KPI Mart
+
+Model:
+
+```text
+dbt_project/models/marts/mart_product_category_sales_kpi.sql
+```
+
+Target table:
+
+```text
+SYNTHETIC_DATA.MARTS.MART_PRODUCT_CATEGORY_SALES_KPI
+```
+
+This mart provides product category-level business KPIs.
+
+Key metrics include:
+
+```text
+total_orders
+completed_orders
+failed_or_reversed_orders
+distinct_products
+unique_customers
+gross_sales_amount
+total_discount_amount
+net_sales_amount
+completed_net_sales_amount
+avg_completed_order_amount
+```
+
+### Why These Models Matter
+
+The dimensional models improve the project by separating reusable descriptive entities from transaction-level facts.
+
+`DIM_DATE` centralizes calendar logic and makes reporting easier across daily, weekly, monthly, quarterly, and yearly views.
+
+`DIM_PRODUCT_CATEGORIES` provides a reusable category-level model that can be used for filtering, grouping, and analyzing sales performance by product category.
+
+Together, these models make the mart layer more analytics-ready and closer to a production-style dimensional model.
+
+### Validation Queries
+
+Check the date dimension:
+
+```sql
+SELECT COUNT(*) AS date_count
+FROM SYNTHETIC_DATA.MARTS.DIM_DATE;
+
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.DIM_DATE
+ORDER BY DATE_DAY
+LIMIT 10;
+```
+
+Check the product category dimension:
+
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.DIM_PRODUCT_CATEGORIES
+ORDER BY COMPLETED_NET_SALES_AMOUNT DESC;
+```
+
+Check the product category KPI mart:
+
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.MARTS.MART_PRODUCT_CATEGORY_SALES_KPI
+ORDER BY COMPLETED_NET_SALES_AMOUNT DESC;
+```
+
+### Interview Explanation
+
+I added dimensional date and product category models to make the mart layer more analytics-ready. The date dimension centralizes reusable calendar logic such as year, quarter, month, week, day of week, and weekend flags. The product category dimension summarizes category-level behavior and supports reporting by product category.
+
+This improves reusability because dashboards and reporting tools can join to dimensions instead of recalculating the same logic repeatedly. It also makes the project closer to a traditional dimensional model with facts, dimensions, and KPI marts.
+
 
 ## Data Quality Checks
 
@@ -1332,10 +1513,10 @@ Potential next improvements:
 
 * Add Terraform for AWS and Snowflake infrastructure
 * Add Slack or email alerting for Airflow failures
-* Add Power BI, Tableau, or Streamlit dashboard
+* Add Power BI, Tableau, or Streamlit dashboard**
 * Add dbt Cloud deployment job
 * Add dimensional date and product models
-* Add backfill workflow
+* Add backfill workflow**
 * Add Great Expectations or Soda data quality checks
 * Add data lineage screenshots from dbt docs
 * Add cost monitoring queries for Snowflake warehouses
