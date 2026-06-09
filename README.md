@@ -968,6 +968,14 @@ Implemented:
 * Airflow orchestration
 * GitHub Actions CI/CD
 
+## Backfill Workflow
+
+This project includes a manual backfill workflow for generating historical sales data and loading it through the same S3, Snowpipe, Snowflake, and dbt transformation path.
+
+Backfill files are uploaded under:
+
+```text
+sales/raw/backfill/business_date=YYYY-MM-DD/
 ## Future Enhancements
 
 Potential next improvements:
@@ -977,7 +985,6 @@ Potential next improvements:
 * Add Power BI, Tableau, or Streamlit dashboard
 * Add dbt Cloud deployment job
 * Add dimensional date and product models
-* Add backfill workflow
 * Add Great Expectations or Soda data quality checks
 * Add data lineage screenshots from dbt docs
 * Add cost monitoring queries for Snowflake warehouses
