@@ -1,6 +1,47 @@
 version: 2
 
 models:
+  - name: dim_date
+    description: Date dimension used for reporting and joining business dates in sales marts.
+    columns:
+      - name: date_day
+        description: Calendar date.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: year_number
+        description: Calendar year.
+
+      - name: quarter_number
+        description: Calendar quarter number.
+
+      - name: month_number
+        description: Calendar month number.
+
+      - name: month_name
+        description: Calendar month name.
+
+      - name: day_of_week_name
+        description: Name of the calendar day.
+
+      - name: is_weekend
+        description: Boolean flag identifying weekend dates.
+
+  - name: dim_product_categories
+    description: Product category dimension derived from sales transactions.
+    columns:
+      - name: product_category
+        description: Product category name.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: distinct_product_count
+        description: Number of distinct products observed in the category.
+
+      - name: completed_net_sales_amount
+        description: Total completed net sales amount for the product category.
   - name: fct_sales
     description: Transaction-level sales fact table.
     columns:
@@ -100,3 +141,17 @@ models:
           - accepted_values:
               arguments:
                 values: ["MATCHED", "MISMATCHED"]
+  
+  - name: mart_product_category_sales_kpi
+    description: Product category sales KPI mart for reporting.
+    columns:
+      - name: product_category
+        data_tests:
+          - not_null
+          - unique
+
+      - name: total_orders
+        description: Total orders for the product category.
+
+      - name: completed_net_sales_amount
+        description: Completed net sales amount for the product category.

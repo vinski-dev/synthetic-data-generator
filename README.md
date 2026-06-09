@@ -1515,7 +1515,7 @@ Potential next improvements:
 * Add Slack or email alerting for Airflow failures
 * Add Power BI, Tableau, or Streamlit dashboard**
 * Add dbt Cloud deployment job
-* Add dimensional date and product models
+* Add dimensional date and product models**
 * Add backfill workflow**
 * Add Great Expectations or Soda data quality checks
 * Add data lineage screenshots from dbt docs
