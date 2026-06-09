@@ -133,10 +133,10 @@ def validate_sales_data(df: pd.DataFrame) -> None:
 
     print("Data validation passed.")
 
-
 def save_to_csv(df: pd.DataFrame) -> str:
     """
-    Save generated data to local output folder.
+    Save generated sales data to the local output folder.
+    Returns the local CSV file path.
     """
 
     os.makedirs("output", exist_ok=True)
@@ -151,6 +151,22 @@ def save_to_csv(df: pd.DataFrame) -> str:
 
     return local_path
 
+def save_late_arriving_to_csv(df: pd.DataFrame) -> str:
+    """
+    Save late-arriving sales data to local output folder.
+    """
+
+    os.makedirs("output", exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    file_name = f"{OUTPUT_PREFIX}_late_arriving_{timestamp}.csv"
+    local_path = os.path.join("output", file_name)
+
+    df.to_csv(local_path, index=False)
+
+    print(f"Late-arriving CSV file created: {local_path}")
+
+    return local_path
 
 def upload_to_s3(local_path: str) -> str:
     """

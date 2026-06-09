@@ -311,6 +311,162 @@ This design provides cost visibility and workload separation without over-engine
 
 The project includes dbt tests for both technical and business quality.
 
+## Late-Arriving Data Simulation
+
+This project includes a late-arriving data simulation to demonstrate how the pipeline handles records that arrive today but belong to older business dates.
+
+In real-world data pipelines, late-arriving data can happen when source systems delay file delivery, retry failed batches, or send corrections for prior business periods. This project simulates that scenario by generating a file that lands in S3 today while the `order_timestamp` values are intentionally backdated.
+
+### Late-Arriving Data Flow
+
+```text
+late_arriving.py
+    ↓
+Generate historical order timestamps
+    ↓
+Validate synthetic sales data
+    ↓
+Save late-arriving CSV locally
+    ↓
+Upload file to S3 sales/raw/
+    ↓
+Snowpipe auto-ingests the file
+    ↓
+dbt incremental fact model processes by load_ts
+    ↓
+Historical KPI dates are updated
+```
+
+### Why This Matters
+
+The file arrival date and business event date are different.
+
+Example:
+
+```text
+File arrival date: 2026-06-09
+S3 path: sales/raw/year=2026/month=06/day=09/
+Order timestamps: 2026-05-10 to 2026-06-01
+```
+
+This means the file lands in today’s S3 partition, but the actual sales transactions belong to prior reporting dates.
+
+### Run Late-Arriving Data Simulation
+
+From the project root:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+python late_arriving.py
+```
+
+Expected output:
+
+```text
+Starting late-arriving sales data simulation...
+Generated late-arriving records: 5,000
+Min order timestamp: 2026-05-10 00:08:38
+Max order timestamp: 2026-06-01 23:57:17
+Data validation passed.
+Late-arriving CSV file created: output\sales_late_arriving_YYYYMMDD_HHMMSS.csv
+Uploaded to S3: s3://vinski-synthetic-data-bucket/sales/raw/year=YYYY/month=MM/day=DD/sales_late_arriving_YYYYMMDD_HHMMSS.csv
+Late-arriving data simulation completed successfully.
+```
+
+### Validate Snowpipe Loaded the Late File
+
+Run in Snowflake:
+
+```sql
+SELECT
+    SOURCE_FILE_NAME,
+    COUNT(*) AS row_count,
+    MIN(ORDER_TIMESTAMP) AS min_order_timestamp,
+    MAX(ORDER_TIMESTAMP) AS max_order_timestamp,
+    MAX(LOAD_TS) AS latest_load_ts
+FROM SYNTHETIC_DATA.RAW.SALES_RAW
+WHERE SOURCE_FILE_NAME ILIKE '%late_arriving%'
+GROUP BY SOURCE_FILE_NAME
+ORDER BY latest_load_ts DESC;
+```
+
+Expected result:
+
+```text
+ROW_COUNT = 5000
+ORDER_TIMESTAMP values are historical
+LOAD_TS is recent
+```
+
+### Run dbt After Late Data Arrives
+
+After Snowpipe loads the file, run:
+
+```powershell
+cd C:\dev\synthetic-data-generator\dbt_project
+dbt build --selector transform_pipeline --no-partial-parse
+```
+
+### Validate Late Data Reached the Fact Table
+
+```sql
+SELECT
+    SOURCE_FILE_NAME,
+    COUNT(*) AS fact_row_count,
+    MIN(ORDER_DATE) AS min_order_date,
+    MAX(ORDER_DATE) AS max_order_date,
+    MAX(LOAD_TS) AS latest_load_ts
+FROM SYNTHETIC_DATA.MARTS.FCT_SALES
+WHERE SOURCE_FILE_NAME ILIKE '%late_arriving%'
+GROUP BY SOURCE_FILE_NAME
+ORDER BY latest_load_ts DESC;
+```
+
+Expected result:
+
+```text
+FACT_ROW_COUNT = 5000
+ORDER_DATE values are historical
+LOAD_TS is recent
+```
+
+### Validate Historical KPI Dates Were Updated
+
+```sql
+SELECT
+    ORDER_DATE,
+    TOTAL_ORDERS,
+    COMPLETED_ORDERS,
+    NET_SALES_AMOUNT,
+    LATEST_LOAD_TS
+FROM SYNTHETIC_DATA.MARTS.MART_SALES_DAILY_KPI
+WHERE ORDER_DATE BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE - 7
+ORDER BY LATEST_LOAD_TS DESC
+LIMIT 20;
+```
+
+This confirms that historical business dates are updated when late-arriving records are processed.
+
+### Late-Arriving Data Design Pattern
+
+The dbt fact model uses `load_ts` for incremental processing instead of filtering only on `order_date`.
+
+This is important because filtering only by business date can miss records that arrive late but belong to older reporting periods.
+
+Recommended pattern:
+
+```text
+Use load timestamp for incremental ingestion logic.
+Use business date for reporting and KPI aggregation.
+```
+
+### Interview Explanation
+
+I simulated late-arriving data by generating sales files that land in S3 today but contain historical order timestamps. Snowpipe ingests the file based on arrival time, while dbt processes the data using the load timestamp. This allows the pipeline to capture late-arriving records and update historical KPI dates correctly.
+
+This pattern is important because real production pipelines often receive delayed files, retries, or corrections from source systems. By using `load_ts` for incremental processing and `order_date` for business reporting, the pipeline avoids missing late-arriving events.
+
+
 ### Technical Data Quality
 
 * Not-null checks
