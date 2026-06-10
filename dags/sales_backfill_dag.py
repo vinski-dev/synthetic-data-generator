@@ -1,4 +1,5 @@
 from __future__ import annotations
+from airflow_alerts import send_slack_failure_alert
 
 import os
 import subprocess
