@@ -1,4 +1,4 @@
-checks for SALES_RAW:
+checks for RAW.SALES_RAW:
   - row_count > 0
   - missing_count(ORDER_ID) = 0
   - missing_count(CUSTOMER_ID) = 0
