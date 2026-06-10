@@ -1,0 +1,8 @@
+boto3
+pandas
+numpy
+faker
+requests
+
+dbt-snowflake==1.11.5
+snowflake-connector-python[secure-local-storage]>=4.2.0,<5.0.0
