@@ -1,0 +1,18 @@
+checks for MART_LOAD_AUDIT:
+  - row_count > 0
+  - missing_count(SOURCE_FILE_NAME) = 0
+  - duplicate_count(SOURCE_FILE_NAME) = 0
+  - missing_count(RECONCILIATION_STATUS) = 0
+  - failed rows:
+      name: all loaded files should reconcile
+      fail query: |
+        SELECT *
+        FROM SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT
+        WHERE RECONCILIATION_STATUS <> 'MATCHED'
+
+  - failed rows:
+      name: raw and fact row counts should match
+      fail query: |
+        SELECT *
+        FROM SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT
+        WHERE ROW_COUNT_DIFFERENCE <> 0

@@ -1,1 +1,2 @@
 ruff
+soda-core-snowflake~=3.5.0

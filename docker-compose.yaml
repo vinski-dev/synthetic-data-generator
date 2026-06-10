@@ -97,6 +97,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/config.py:/opt/airflow/config.py
     - ${AIRFLOW_PROJ_DIR:-.}/output:/opt/airflow/output
     - ${AIRFLOW_PROJ_DIR:-.}/dbt_project:/opt/airflow/dbt_project
+    - ${AIRFLOW_PROJ_DIR:-.}/soda:/opt/airflow/soda
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on

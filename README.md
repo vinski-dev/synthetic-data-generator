@@ -1395,6 +1395,213 @@ FROM SYNTHETIC_DATA.MARTS.MART_LOAD_AUDIT
 ORDER BY LAST_LOADED_AT DESC;
 ```
 
+## Soda Data Quality Checks
+
+This project includes Soda data quality checks as an additional operational validation layer on top of dbt tests.
+
+dbt tests validate model-level assumptions such as uniqueness, not-null rules, accepted values, and reconciliation logic. Soda adds a separate data quality layer that can run locally, in GitHub Actions, or inside Airflow after dbt transformations are complete.
+
+### Soda Folder Structure
+
+```text
+soda/
+├── configuration.yml
+├── checks_raw.yml
+├── checks_marts.yml
+└── checks_reconciliation.yml
+```
+
+### What Soda Validates
+
+The Soda checks validate:
+
+* Raw table row count
+* Required fields
+* Missing values
+* Duplicate keys
+* Invalid order statuses
+* Negative quantity values
+* Negative amount values
+* Fact table completeness
+* Mart table row counts
+* Raw-to-fact reconciliation
+* Load audit status
+
+### Soda Configuration
+
+Soda uses the same Snowflake environment variables used by dbt:
+
+```text
+SNOWFLAKE_ACCOUNT
+SNOWFLAKE_USER
+SNOWFLAKE_PASSWORD
+SNOWFLAKE_ROLE
+SNOWFLAKE_WAREHOUSE
+SNOWFLAKE_DATABASE
+```
+
+The Soda Snowflake connection is configured in:
+
+```text
+soda/configuration.yml
+```
+
+### Run Soda Locally
+
+From the project root:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+.\venv311\Scripts\Activate.ps1
+.\set_env.ps1
+```
+
+Run all Soda checks:
+
+```powershell
+soda scan -d synthetic_sales_snowflake -c soda\configuration.yml soda\checks_raw.yml soda\checks_marts.yml soda\checks_reconciliation.yml
+```
+
+If the `soda` command is not recognized, run:
+
+```powershell
+python -m soda.scan -d synthetic_sales_snowflake -c soda\configuration.yml soda\checks_raw.yml soda\checks_marts.yml soda\checks_reconciliation.yml
+```
+
+### Run Soda After dbt
+
+Recommended local validation flow:
+
+```powershell
+cd C:\dev\synthetic-data-generator\dbt_project
+dbt build --selector transform_pipeline --no-partial-parse
+```
+
+Then from the project root:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+soda scan -d synthetic_sales_snowflake -c soda\configuration.yml soda\checks_raw.yml soda\checks_marts.yml soda\checks_reconciliation.yml
+```
+
+This validates that dbt successfully produced clean and reconciled mart outputs.
+
+### Run Soda in Airflow
+
+Airflow can run Soda after the dbt build task.
+
+The Docker Compose file must mount the local `soda/` folder into the Airflow container:
+
+```yaml
+- ${AIRFLOW_PROJ_DIR:-.}/soda:/opt/airflow/soda
+```
+
+Example Airflow task:
+
+```python
+@task
+def soda_quality_check_task() -> None:
+    run_command(
+        [
+            "soda",
+            "scan",
+            "-d",
+            "synthetic_sales_snowflake",
+            "-c",
+            "/opt/airflow/soda/configuration.yml",
+            "/opt/airflow/soda/checks_raw.yml",
+            "/opt/airflow/soda/checks_marts.yml",
+            "/opt/airflow/soda/checks_reconciliation.yml",
+        ],
+        cwd="/opt/airflow",
+    )
+```
+
+Recommended Airflow dependency:
+
+```text
+dbt_build_task
+    ↓
+soda_quality_check_task
+```
+
+This ensures the pipeline validates data quality after transformations are complete.
+
+### Required Docker Compose Mount
+
+Make sure `docker-compose.yaml` includes:
+
+```yaml
+volumes:
+  - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+  - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+  - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+  - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+  - ${AIRFLOW_PROJ_DIR:-.}/pipeline:/opt/airflow/pipeline
+  - ${AIRFLOW_PROJ_DIR:-.}/dbt_project:/opt/airflow/dbt_project
+  - ${AIRFLOW_PROJ_DIR:-.}/soda:/opt/airflow/soda
+  - ${AIRFLOW_PROJ_DIR:-.}/config.py:/opt/airflow/config.py
+  - ${AIRFLOW_PROJ_DIR:-.}/output:/opt/airflow/output
+```
+
+After updating Docker Compose, rebuild Airflow:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+docker compose down
+docker compose up -d --build
+```
+
+Verify Soda files are mounted:
+
+```powershell
+docker compose exec airflow-scheduler ls -la /opt/airflow/soda
+```
+
+Expected files:
+
+```text
+configuration.yml
+checks_raw.yml
+checks_marts.yml
+checks_reconciliation.yml
+```
+
+### Soda in GitHub Actions
+
+The project can also run Soda checks in CI/CD through:
+
+```text
+.github/workflows/soda_data_quality.yml
+```
+
+The workflow connects to Snowflake using GitHub Actions secrets and runs the Soda checks against the raw and mart tables.
+
+Required GitHub secrets:
+
+```text
+SNOWFLAKE_ACCOUNT
+SNOWFLAKE_USER
+SNOWFLAKE_PASSWORD
+SNOWFLAKE_ROLE
+SNOWFLAKE_WAREHOUSE
+SNOWFLAKE_DATABASE
+```
+
+### Why Soda Was Added
+
+Soda adds a practical operational data quality layer to the project.
+
+dbt tests are excellent for model-level validation, while Soda is useful for pipeline-level checks such as row counts, missing values, invalid business values, reconciliation failures, and data quality monitoring across raw and mart tables.
+
+This makes the pipeline more production-ready because data quality can be validated after ingestion, after transformation, and before dashboards consume the final marts.
+
+### Interview Explanation
+
+I added Soda data quality checks as an additional validation layer on top of dbt tests. dbt tests validate model assumptions such as uniqueness, not-null rules, and accepted values. Soda validates the pipeline outputs from an operational data quality perspective, including row counts, missing values, invalid statuses, negative values, and raw-to-fact reconciliation.
+
+The checks can run locally, in GitHub Actions, or inside Airflow after dbt build. This gives the project a more production-style quality gate before the final Snowflake marts are used by the Streamlit dashboard.
+
 ## Troubleshooting
 
 ### Docker command not recognized
@@ -1506,15 +1713,6 @@ Implemented:
 * Airflow orchestration
 * GitHub Actions CI/CD
 
-## Snowflake Cost Monitoring
-
-This project includes Snowflake cost monitoring queries for the project warehouses:
-
-WH_DBT_DEV
-WH_DBT_TRANSFORM
-WH_DBT_MARTS
-
-Added Snowflake cost monitoring queries using Account Usage views to track credit usage by warehouse, query volume, long-running queries, and high-scan queries. Since the project separates development, transformation, and mart workloads into different warehouses, these queries help monitor cost by workload and identify optimization opportunities such as incremental models, query pruning, auto-suspend tuning, and warehouse resizing.
 
 ## Future Enhancements
 
@@ -1523,8 +1721,6 @@ Potential next improvements:
 * Add Terraform for AWS and Snowflake infrastructure
 * Add Slack or email alerting for Airflow failures
 * Add Power BI, Tableau, or Streamlit dashboard**
-* Add dbt Cloud deployment job
-* Add Great Expectations or Soda data quality checks
 * Add data lineage screenshots from dbt docs
 * Add cost monitoring queries for Snowflake warehouses
 

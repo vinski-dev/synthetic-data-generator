@@ -167,5 +167,26 @@ def synthetic_sales_full_elt():
 
     loaded_file >> build
     loaded_file >> freshness
+@task
+def soda_quality_check_task() -> None:
+    run_command(
+        [
+            "soda",
+            "scan",
+            "-d",
+            "synthetic_sales_snowflake",
+            "-c",
+            "/opt/airflow/soda/configuration.yml",
+            "/opt/airflow/soda/checks_raw.yml",
+            "/opt/airflow/soda/checks_marts.yml",
+            "/opt/airflow/soda/checks_reconciliation.yml",
+        ],
+        cwd="/opt/airflow",
+    )
 
+    build = dbt_build_task()
+    quality = soda_quality_check_task()
+
+    build >> quality
+    
 synthetic_sales_full_elt()

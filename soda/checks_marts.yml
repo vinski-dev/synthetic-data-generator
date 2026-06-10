@@ -1,0 +1,37 @@
+checks for MART_SALES_DAILY_KPI:
+  - row_count > 0
+  - missing_count(ORDER_DATE) = 0
+  - duplicate_count(ORDER_DATE) = 0
+  - missing_count(TOTAL_ORDERS) = 0
+  - missing_count(COMPLETED_ORDERS) = 0
+  - missing_count(NET_SALES_AMOUNT) = 0
+  - min(TOTAL_ORDERS) >= 0
+  - min(COMPLETED_ORDERS) >= 0
+  - min(NET_SALES_AMOUNT) >= 0
+
+checks for FCT_SALES:
+  - row_count > 0
+  - missing_count(SALES_EVENT_KEY) = 0
+  - duplicate_count(SALES_EVENT_KEY) = 0
+  - missing_count(ORDER_ID) = 0
+  - missing_count(CUSTOMER_ID) = 0
+  - missing_count(ORDER_DATE) = 0
+  - missing_count(SOURCE_FILE_NAME) = 0
+  - min(QUANTITY) > 0
+  - min(NET_AMOUNT) >= 0
+
+checks for MART_CUSTOMER_SALES_KPI:
+  - row_count > 0
+  - missing_count(CUSTOMER_ID) = 0
+  - duplicate_count(CUSTOMER_ID) = 0
+  - min(TOTAL_ORDERS) >= 0
+  - min(COMPLETED_ORDERS) >= 0
+  - min(COMPLETED_NET_SALES_AMOUNT) >= 0
+
+checks for MART_PRODUCT_CATEGORY_SALES_KPI:
+  - row_count > 0
+  - missing_count(PRODUCT_CATEGORY) = 0
+  - duplicate_count(PRODUCT_CATEGORY) = 0
+  - min(TOTAL_ORDERS) >= 0
+  - min(COMPLETED_ORDERS) >= 0
+  - min(COMPLETED_NET_SALES_AMOUNT) >= 0
