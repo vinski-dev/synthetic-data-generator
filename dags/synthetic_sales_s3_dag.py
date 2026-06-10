@@ -167,9 +167,10 @@ def synthetic_sales_full_elt():
 
     loaded_file >> build
     loaded_file >> freshness
-@task
-def soda_quality_check_task() -> None:
-    run_command(
+
+    @task
+    def soda_quality_check_task() -> None:
+        run_command(
         [
             "soda",
             "scan",
