@@ -52,6 +52,25 @@ jobs:
           test -n "$SNOWFLAKE_WAREHOUSE" || (echo "SNOWFLAKE_WAREHOUSE is missing" && exit 1)
           test -n "$SNOWFLAKE_DATABASE" || (echo "SNOWFLAKE_DATABASE is missing" && exit 1)
       
+      - name: Create dbt profiles.yml
+        run: |
+          cat > dbt_project/profiles.yml <<EOF
+          synthetic_sales_analytics:
+            target: ci
+            outputs:
+              ci:
+                type: snowflake
+                account: "${SNOWFLAKE_ACCOUNT}"
+                user: "${SNOWFLAKE_USER}"
+                password: "${SNOWFLAKE_PASSWORD}"
+                role: "${SNOWFLAKE_ROLE}"
+                warehouse: "${SNOWFLAKE_WAREHOUSE}"
+                database: "${SNOWFLAKE_DATABASE}"
+                schema: DBT_CI
+                threads: 4
+                client_session_keep_alive: false
+          EOF
+          
       - name: Run dbt models
         run: |
           cd dbt_project
