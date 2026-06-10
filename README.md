@@ -879,6 +879,243 @@ I added a backfill workflow to simulate how a production data pipeline handles h
 
 The important design choice is that dbt incremental processing uses `LOAD_TS`, while reporting uses `ORDER_DATE`. This allows the pipeline to capture records that arrive today but belong to prior reporting periods, which is a common real-world data engineering scenario.
 
+## Airflow SMTP Email Alerting
+
+This project supports SMTP-based email alerting for Airflow task failures.
+
+Email alerting provides an additional observability layer alongside Slack alerting. When an Airflow task fails, Airflow can send an email notification to a configured recipient with failure details.
+
+### Email Alerting Flow
+
+```text
+Airflow task fails
+    ↓
+Airflow detects task failure
+    ↓
+email_on_failure is triggered
+    ↓
+Airflow uses SMTP configuration
+    ↓
+Failure email is sent to AIRFLOW_ALERT_EMAIL
+    ↓
+Engineer reviews the Airflow logs and resolves the issue
+```
+
+### SMTP Configuration in `.env`
+
+SMTP values are stored in the local `.env` file.
+
+Example using Gmail SMTP:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_STARTTLS=True
+SMTP_SSL=False
+SMTP_USER=your_sender_email@gmail.com
+SMTP_PASSWORD=your_gmail_app_password
+SMTP_MAIL_FROM=your_sender_email@gmail.com
+AIRFLOW_ALERT_EMAIL=your_receiver_email@gmail.com
+```
+
+For Gmail, use a Google App Password instead of your regular Gmail password.
+
+The real `.env` file should never be committed to GitHub.
+
+Make sure `.gitignore` includes:
+
+```text
+.env
+set_env.ps1
+```
+
+### Docker Compose Configuration
+
+The SMTP values are passed into the Airflow containers through the `environment:` section in `docker-compose.yaml`.
+
+Add these values under the Airflow common environment section:
+
+```yaml
+AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+
+AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST}
+AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT}
+AIRFLOW__SMTP__SMTP_STARTTLS: ${SMTP_STARTTLS}
+AIRFLOW__SMTP__SMTP_SSL: ${SMTP_SSL}
+AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+
+AIRFLOW_ALERT_EMAIL: ${AIRFLOW_ALERT_EMAIL}
+```
+
+Example placement:
+
+```yaml
+x-airflow-common:
+  &airflow-common
+  build: .
+  environment:
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+
+    SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
+    SNOWFLAKE_USER: ${SNOWFLAKE_USER}
+    SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
+    SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE}
+    SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
+    SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
+
+    SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+
+    AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+    AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST}
+    AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT}
+    AIRFLOW__SMTP__SMTP_STARTTLS: ${SMTP_STARTTLS}
+    AIRFLOW__SMTP__SMTP_SSL: ${SMTP_SSL}
+    AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+
+    AIRFLOW_ALERT_EMAIL: ${AIRFLOW_ALERT_EMAIL}
+```
+
+### DAG Configuration
+
+Each DAG can enable email alerting using `default_args`.
+
+Example:
+
+```python
+import os
+
+DEFAULT_ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL")
+
+
+@dag(
+    dag_id="synthetic_sales_full_elt",
+    description="Generate sales data, upload to S3, wait for Snowpipe, then run dbt transformations.",
+    start_date=datetime(2026, 1, 1),
+    schedule="@daily",
+    catchup=False,
+    default_args={
+        "email": [DEFAULT_ALERT_EMAIL] if DEFAULT_ALERT_EMAIL else [],
+        "email_on_failure": True,
+        "email_on_retry": False,
+    },
+    tags=["synthetic-data", "s3", "snowpipe", "snowflake", "dbt"],
+)
+def synthetic_sales_full_elt():
+    ...
+```
+
+The same pattern can be applied to the manual backfill DAG:
+
+```python
+@dag(
+    dag_id="sales_backfill_workflow",
+    description="Manual sales backfill workflow for historical business dates.",
+    start_date=datetime(2026, 1, 1),
+    schedule=None,
+    catchup=False,
+    default_args={
+        "email": [DEFAULT_ALERT_EMAIL] if DEFAULT_ALERT_EMAIL else [],
+        "email_on_failure": True,
+        "email_on_retry": False,
+    },
+    tags=["sales", "backfill", "snowpipe", "dbt"],
+)
+def sales_backfill_workflow():
+    ...
+```
+
+### Rebuild Airflow After Updating SMTP Settings
+
+After updating `.env` or `docker-compose.yaml`, rebuild the Airflow containers:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+
+docker compose down
+docker compose up -d --build
+```
+
+Verify the SMTP environment variables are available inside the Airflow container:
+
+```powershell
+docker compose exec airflow-scheduler printenv | findstr SMTP
+docker compose exec airflow-scheduler printenv | findstr AIRFLOW_ALERT_EMAIL
+```
+
+Expected result:
+
+```text
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+AIRFLOW_ALERT_EMAIL=your_receiver_email@gmail.com
+```
+
+### Testing Email Alerting
+
+To test email alerting safely, add a temporary failing task to a DAG:
+
+```python
+@task
+def test_email_failure_task() -> None:
+    raise RuntimeError("Testing Airflow email failure alert")
+```
+
+Then link it after an existing task:
+
+```python
+test_email_failure = test_email_failure_task()
+build >> test_email_failure
+```
+
+Trigger the DAG manually from the Airflow UI.
+
+Expected result:
+
+```text
+Task fails
+    ↓
+Airflow sends an email alert
+    ↓
+Engineer receives failure notification
+```
+
+After confirming the email alert works, remove the temporary test task.
+
+### Why SMTP Email Alerting Was Added
+
+SMTP email alerting makes the pipeline more production-like by notifying engineers when an Airflow task fails.
+
+This helps reduce time to detection for failures in:
+
+```text
+Data generation
+S3 upload
+Snowpipe ingestion waiting
+dbt build
+Soda data quality checks
+Backfill workflows
+```
+
+### Interview Explanation
+
+I added SMTP-based email alerting to the Airflow DAGs. The SMTP credentials are stored in the local `.env` file and passed into the Airflow containers through Docker Compose. The DAGs use `email_on_failure=True`, so failed tasks send notifications to the configured alert recipient.
+
+This gives the pipeline an additional observability layer and makes failure handling more production-ready.
+
 
 ### Technical Data Quality
 
@@ -1719,10 +1956,8 @@ Implemented:
 Potential next improvements:
 
 * Add Terraform for AWS and Snowflake infrastructure
-* Add Slack or email alerting for Airflow failures
-* Add Power BI, Tableau, or Streamlit dashboard**
 * Add data lineage screenshots from dbt docs
-* Add cost monitoring queries for Snowflake warehouses
+
 
 ## Interview-Ready Summary
 

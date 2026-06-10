@@ -1,4 +1,5 @@
 from __future__ import annotations
+from airflow_alerts import send_slack_failure_alert
 
 import os
 import subprocess
@@ -49,6 +50,9 @@ def run_command(command: list[str], cwd: str | None = None) -> None:
     start_date=datetime(2026, 1, 1),
     schedule="@daily",
     catchup=False,
+    default_args={
+        "on_failure_callback": send_slack_failure_alert,
+    },
     tags=["synthetic-data", "s3", "snowpipe", "snowflake", "dbt"],
 )
 def synthetic_sales_full_elt():
@@ -189,5 +193,12 @@ def synthetic_sales_full_elt():
     quality = soda_quality_check_task()
 
     build >> quality
+
+    @task
+    def test_failure_alert_task() -> None:
+        raise RuntimeError("Testing Slack failure alert")
+    
+    test_failure = test_failure_alert_task()
+    build >> test_failure
     
 synthetic_sales_full_elt()

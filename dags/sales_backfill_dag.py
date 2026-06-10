@@ -47,6 +47,9 @@ def run_command(command: list[str], cwd: str | None = None) -> None:
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
+    default_args={
+        "on_failure_callback": send_slack_failure_alert,
+    },
     tags=["sales", "backfill", "snowpipe", "dbt"],
     params={
         "start_date": "2026-05-01",
