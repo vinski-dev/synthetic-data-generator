@@ -1,4 +1,4 @@
-checks for RAW.SALES_RAW:
+checks for SALES_RAW:
   - row_count > 0
   - missing_count(ORDER_ID) = 0
   - missing_count(CUSTOMER_ID) = 0
@@ -10,19 +10,19 @@ checks for RAW.SALES_RAW:
       name: negative quantity should not exist
       fail query: |
         SELECT *
-        FROM SYNTHETIC_DATA.RAW.SALES_RAW
+        FROM SALES_RAW
         WHERE QUANTITY <= 0
 
   - failed rows:
       name: negative net amount should not exist
       fail query: |
         SELECT *
-        FROM SYNTHETIC_DATA.RAW.SALES_RAW
+        FROM SALES_RAW
         WHERE NET_AMOUNT < 0
 
   - failed rows:
       name: invalid order status should not exist
       fail query: |
         SELECT *
-        FROM SYNTHETIC_DATA.RAW.SALES_RAW
+        FROM SALES_RAW
         WHERE UPPER(ORDER_STATUS) NOT IN ('COMPLETED', 'PENDING', 'CANCELLED', 'REFUNDED')
