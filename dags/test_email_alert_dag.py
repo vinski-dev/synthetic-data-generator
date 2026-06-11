@@ -6,7 +6,16 @@ from datetime import datetime
 from airflow.decorators import dag, task
 
 
-DEFAULT_ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL")
+DEFAULT_ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL", "").strip()
+
+DEFAULT_ARGS = {
+    "email_on_failure": bool(DEFAULT_ALERT_EMAIL),
+    "email_on_retry": False,
+    "retries": 0,
+}
+
+if DEFAULT_ALERT_EMAIL:
+    DEFAULT_ARGS["email"] = [DEFAULT_ALERT_EMAIL]
 
 
 @dag(
@@ -15,12 +24,7 @@ DEFAULT_ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL")
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
-    default_args={
-        "email": [DEFAULT_ALERT_EMAIL] if DEFAULT_ALERT_EMAIL else [],
-        "email_on_failure": True,
-        "email_on_retry": False,
-        "retries": 0,
-    },
+    default_args=DEFAULT_ARGS,
     tags=["test", "alerting", "email"],
 )
 def test_email_alert_dag():

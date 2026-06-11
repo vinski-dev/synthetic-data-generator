@@ -9,3 +9,4 @@ dbt-snowflake~=1.8.0
 dbt-core~=1.8.0
 streamlit
 requests
+click==8.2.1

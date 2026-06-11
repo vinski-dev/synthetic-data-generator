@@ -15,7 +15,7 @@ def generate_sales_data(num_records: int = NUM_RECORDS) -> str:
     Generate synthetic sales data and save it locally.
     Returns the local CSV path.
     """
-    
+
     os.makedirs("output", exist_ok=True)
 
     np.random.seed(42)
@@ -101,6 +101,7 @@ def generate_sales_data(num_records: int = NUM_RECORDS) -> str:
 
     return local_path
 
+
 def validate_sales_file(local_path: str) -> str:
     """
     Validate generated sales CSV file before upload.
@@ -150,6 +151,7 @@ def validate_sales_file(local_path: str) -> str:
 
     return local_path
 
+
 def save_to_csv(df: pd.DataFrame) -> str:
     """
     Save generated sales data to the local output folder.
@@ -167,6 +169,7 @@ def save_to_csv(df: pd.DataFrame) -> str:
     print(f"CSV file created: {local_path}")
 
     return local_path
+
 
 def upload_file_to_s3(local_path: str) -> str:
     """
@@ -209,8 +212,8 @@ def upload_file_to_s3(local_path: str) -> str:
 
     return s3_uri
 
+
 def generate_late_arriving_sales_data(
-        
     num_records: int = 5000,
     min_late_days: int = 7,
     max_late_days: int = 30,
@@ -299,8 +302,8 @@ def generate_late_arriving_sales_data(
 
     return df
 
-def save_late_arriving_to_csv(df: pd.DataFrame) -> str:
 
+def save_late_arriving_to_csv(df: pd.DataFrame) -> str:
     """
     Save late-arriving sales data to local output folder.
     """
@@ -316,6 +319,7 @@ def save_late_arriving_to_csv(df: pd.DataFrame) -> str:
     print(f"Late-arriving CSV file created: {local_path}")
 
     return local_path
+
 
 def generate_sales_data_for_business_date(
     business_date: date,
@@ -426,7 +430,6 @@ def save_backfill_to_csv(df: pd.DataFrame, business_date: date) -> str:
 
 
 def upload_backfill_to_s3(local_path: str, business_date: date) -> str:
-
     """
     Upload a backfill CSV file to S3 under sales/raw/backfill/.
     Returns the final S3 URI.
@@ -441,9 +444,7 @@ def upload_backfill_to_s3(local_path: str, business_date: date) -> str:
     business_date_key = business_date.strftime("%Y-%m-%d")
 
     s3_key = (
-        f"{OUTPUT_PREFIX}/raw/backfill/"
-        f"business_date={business_date_key}/"
-        f"{file_name}"
+        f"{OUTPUT_PREFIX}/raw/backfill/business_date={business_date_key}/{file_name}"
     )
 
     try:
@@ -464,6 +465,7 @@ def upload_backfill_to_s3(local_path: str, business_date: date) -> str:
     print(f"Uploaded backfill file to: {s3_uri}")
 
     return s3_uri
+
 
 def validate_sales_data(df: pd.DataFrame) -> None:
     """
@@ -505,5 +507,3 @@ def validate_sales_data(df: pd.DataFrame) -> None:
         raise ValueError("Invalid quantity found.")
 
     print("Data validation passed.")
-
-

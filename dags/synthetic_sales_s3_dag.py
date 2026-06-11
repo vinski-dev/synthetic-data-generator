@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 import snowflake.connector
 from airflow.decorators import dag, task
+from airflow import DAG
+from airflow.sdk import DAG
 
 from pipeline.sales_pipeline import (
     generate_sales_data,
@@ -95,7 +97,6 @@ def synthetic_sales_full_elt():
 
             max_attempts = 60
             sleep_seconds = 20
-           
 
             for attempt in range(1, max_attempts + 1):
                 print(f"Snowpipe check attempt {attempt}/{max_attempts}")
@@ -129,36 +130,35 @@ def synthetic_sales_full_elt():
     @task
     def dbt_source_freshness_task() -> None:
         run_command(
-        [
-            "dbt",
-            "source",
-            "freshness",
-            "--project-dir",
-            DBT_PROJECT_DIR,
-            "--profiles-dir",
-            DBT_PROJECT_DIR,
-            "--no-partial-parse",
-        ],
-        cwd=DBT_PROJECT_DIR,
-    )
-
+            [
+                "dbt",
+                "source",
+                "freshness",
+                "--project-dir",
+                DBT_PROJECT_DIR,
+                "--profiles-dir",
+                DBT_PROJECT_DIR,
+                "--no-partial-parse",
+            ],
+            cwd=DBT_PROJECT_DIR,
+        )
 
     @task
     def dbt_build_task() -> None:
         run_command(
-        [
-            "dbt",
-            "build",
-            "--selector",
-            "transform_pipeline",
-            "--project-dir",
-            DBT_PROJECT_DIR,
-            "--profiles-dir",
-            DBT_PROJECT_DIR,
-            "--no-partial-parse",
-        ],
-        cwd=DBT_PROJECT_DIR,
-    )
+            [
+                "dbt",
+                "build",
+                "--selector",
+                "transform_pipeline",
+                "--project-dir",
+                DBT_PROJECT_DIR,
+                "--profiles-dir",
+                DBT_PROJECT_DIR,
+                "--no-partial-parse",
+            ],
+            cwd=DBT_PROJECT_DIR,
+        )
 
     generated_file = generate_task()
     validated_file = validate_task(generated_file)
@@ -175,19 +175,19 @@ def synthetic_sales_full_elt():
     @task
     def soda_quality_check_task() -> None:
         run_command(
-        [
-            "soda",
-            "scan",
-            "-d",
-            "synthetic_sales_snowflake",
-            "-c",
-            "/opt/airflow/soda/configuration.yml",
-            "/opt/airflow/soda/checks_raw.yml",
-            "/opt/airflow/soda/checks_marts.yml",
-            "/opt/airflow/soda/checks_reconciliation.yml",
-        ],
-        cwd="/opt/airflow",
-    )
+            [
+                "soda",
+                "scan",
+                "-d",
+                "synthetic_sales_snowflake",
+                "-c",
+                "/opt/airflow/soda/configuration.yml",
+                "/opt/airflow/soda/checks_raw.yml",
+                "/opt/airflow/soda/checks_marts.yml",
+                "/opt/airflow/soda/checks_reconciliation.yml",
+            ],
+            cwd="/opt/airflow",
+        )
 
     build = dbt_build_task()
     quality = soda_quality_check_task()
@@ -197,8 +197,9 @@ def synthetic_sales_full_elt():
     @task
     def test_failure_alert_task() -> None:
         raise RuntimeError("Testing Slack failure alert")
-    
+
     test_failure = test_failure_alert_task()
     build >> test_failure
-    
+
+
 synthetic_sales_full_elt()

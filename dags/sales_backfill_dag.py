@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import snowflake.connector
 from airflow.decorators import dag, task
-from airflow.operators.python import get_current_context
+from airflow.sdk import get_current_context
 
 from pipeline.sales_pipeline import (
     generate_sales_data_for_business_date,
@@ -97,7 +97,9 @@ def sales_backfill_workflow():
 
     @task
     def wait_for_snowpipe_backfill(uploaded_files: list[str]) -> list[str]:
-        expected_files = [os.path.basename(urlparse(uri).path) for uri in uploaded_files]
+        expected_files = [
+            os.path.basename(urlparse(uri).path) for uri in uploaded_files
+        ]
 
         conn = snowflake.connector.connect(
             account=os.environ["SNOWFLAKE_ACCOUNT"],
