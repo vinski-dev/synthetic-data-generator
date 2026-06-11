@@ -9,8 +9,8 @@ from urllib.parse import urlparse
 
 import snowflake.connector
 from airflow.decorators import dag, task
-from airflow import DAG
-from airflow.sdk import DAG
+
+
 
 from pipeline.sales_pipeline import (
     generate_sales_data,
