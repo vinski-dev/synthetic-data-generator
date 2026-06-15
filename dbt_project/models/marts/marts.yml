@@ -28,20 +28,7 @@ models:
       - name: is_weekend
         description: Boolean flag identifying weekend dates.
 
-  - name: dim_product_categories
-    description: Product category dimension derived from sales transactions.
-    columns:
-      - name: product_category
-        description: Product category name.
-        data_tests:
-          - not_null
-          - unique
-
-      - name: distinct_product_count
-        description: Number of distinct products observed in the category.
-
-      - name: completed_net_sales_amount
-        description: Total completed net sales amount for the product category.
+  
   - name: fct_sales
     description: Transaction-level sales fact table.
     columns:
@@ -65,6 +52,7 @@ models:
         description: Standardized order status.
         data_tests:
           - accepted_values:
+              arguments:
                 values: ["COMPLETED", "PENDING", "CANCELLED", "REFUNDED"]
 
       - name: source_file_name
@@ -138,6 +126,7 @@ models:
         description: Indicates whether raw and fact row counts match.
         data_tests:
           - accepted_values:
+              arguments:
                 values: ["MATCHED", "MISMATCHED"]
   
   - name: mart_product_category_sales_kpi
