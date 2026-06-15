@@ -60,6 +60,7 @@ models:
         description: Standardized order status.
         data_tests:
           - accepted_values:
+              arguments:
                values: ["COMPLETED", "PENDING", "CANCELLED", "REFUNDED"]
 
       - name: source_file_name
