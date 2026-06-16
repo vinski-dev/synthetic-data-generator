@@ -745,6 +745,466 @@ I implemented checksum validation in the ingestion layer using SHA-256. Before u
 
 The pipeline also creates a manifest JSON file beside the CSV. The manifest stores the file name, S3 path, checksum, file size, row count, and creation timestamp. Snowpipe loads only the CSV files into the raw sales table, while the manifest files are used separately for audit and reconciliation.
 
+## Schema Evolution Strategy
+
+This project includes a controlled schema evolution strategy for the ELT pipeline.
+
+The goal is to allow safe source schema changes while preventing breaking changes from silently corrupting downstream Snowflake tables, dbt models, and dashboard outputs.
+
+### Schema Evolution Flow
+
+```text
+Python ingestion generates sales DataFrame
+    ↓
+Data quality validation runs
+    ↓
+Schema contract validation runs
+    ↓
+CSV file is saved locally
+    ↓
+Schema manifest is created
+    ↓
+Checksum manifest is created
+    ↓
+CSV and manifest files are uploaded to S3
+    ↓
+Snowpipe loads approved CSV files into Snowflake RAW
+    ↓
+Snowflake validates RAW table structure
+    ↓
+dbt staging safely handles optional columns
+    ↓
+Marts expose new columns only when intentionally approved
+```
+
+### Schema Contract
+
+The source schema contract is stored in:
+
+```text
+schema/sales_schema_contract.json
+```
+
+The schema contract defines:
+
+```text
+Dataset name
+Schema version
+Required columns
+Optional columns
+Expected simplified data types
+Compatibility mode
+Whether additive columns are allowed
+```
+
+Example contract structure:
+
+```json
+{
+  "dataset": "sales",
+  "version": "1.0.0",
+  "compatibility": "backward",
+  "allow_additive_columns": true,
+  "required_columns": {
+    "order_id": "integer",
+    "customer_id": "integer",
+    "product_id": "integer",
+    "product_category": "string",
+    "order_timestamp": "datetime",
+    "quantity": "integer",
+    "unit_price": "number",
+    "gross_amount": "number",
+    "discount_amount": "number",
+    "net_amount": "number",
+    "payment_method": "string",
+    "order_status": "string",
+    "batch_id": "string",
+    "generated_at_utc": "string"
+  },
+  "optional_columns": {
+    "sales_channel": "string",
+    "promotion_code": "string",
+    "device_type": "string"
+  }
+}
+```
+
+### Schema Evolution Rules
+
+Allowed changes:
+
+```text
+New nullable columns
+New optional business attributes
+Backward-compatible additive changes
+Columns added intentionally to staging or marts
+```
+
+Breaking changes:
+
+```text
+Missing required columns
+Renamed required columns
+Unexpected type changes
+Column reordering in CSV files
+Required fields becoming nullable
+Removing fields used by downstream models
+```
+
+### Python Schema Validation
+
+Schema validation is implemented in:
+
+```text
+pipeline/sales_pipeline.py
+```
+
+Key functions:
+
+```text
+load_schema_contract()
+infer_dataframe_schema()
+validate_schema_contract()
+save_schema_manifest()
+```
+
+The recommended ingestion order is:
+
+```text
+generate_sales_data()
+    ↓
+validate_sales_data()
+    ↓
+validate_schema_contract()
+    ↓
+save_to_csv()
+    ↓
+save_schema_manifest()
+    ↓
+upload_file_to_s3()
+```
+
+Example `main.py` flow:
+
+```python
+df = generate_sales_data(NUM_RECORDS)
+
+validate_sales_data(df)
+
+schema_validation_result = validate_schema_contract(df)
+
+local_path = save_to_csv(df)
+
+save_schema_manifest(
+    local_path=local_path,
+    schema_validation_result=schema_validation_result,
+)
+
+s3_uri = upload_file_to_s3(local_path)
+```
+
+### Schema Manifest
+
+Each pipeline run can create a schema manifest beside the CSV file.
+
+Example local files:
+
+```text
+output/sales_20260616_082043.csv
+output/sales_20260616_082043.csv.schema.json
+output/sales_20260616_082043.csv.manifest.json
+```
+
+The schema manifest records:
+
+```text
+Dataset name
+Contract version
+Actual detected schema
+Missing required columns
+Additive columns
+Type mismatches
+Schema validation status
+Creation timestamp
+```
+
+This gives the pipeline an audit trail of the schema that was validated before ingestion.
+
+### Example Additive Column
+
+An example safe schema evolution is adding:
+
+```text
+sales_channel
+```
+
+This column can be added as an optional source attribute.
+
+Example values:
+
+```text
+Online
+Store
+Mobile App
+Marketplace
+```
+
+The schema contract can allow this as an optional field:
+
+```json
+"optional_columns": {
+  "sales_channel": "string"
+}
+```
+
+Once approved, the raw Snowflake table can be updated:
+
+```sql
+ALTER TABLE SYNTHETIC_DATA.RAW.SALES_RAW
+ADD COLUMN IF NOT EXISTS SALES_CHANNEL STRING;
+```
+
+### Snowflake Schema Validation
+
+Snowflake can validate the actual `RAW.SALES_RAW` table structure using `INFORMATION_SCHEMA.COLUMNS`.
+
+This helps confirm that the raw table still contains the required columns expected by the pipeline.
+
+Example validation query:
+
+```sql
+WITH expected_schema AS (
+
+    SELECT *
+    FROM VALUES
+        ('ORDER_ID', 'NUMBER', TRUE),
+        ('CUSTOMER_ID', 'NUMBER', TRUE),
+        ('PRODUCT_ID', 'NUMBER', TRUE),
+        ('PRODUCT_CATEGORY', 'STRING', TRUE),
+        ('ORDER_TIMESTAMP', 'TIMESTAMP', TRUE),
+        ('QUANTITY', 'NUMBER', TRUE),
+        ('UNIT_PRICE', 'NUMBER', TRUE),
+        ('GROSS_AMOUNT', 'NUMBER', TRUE),
+        ('DISCOUNT_AMOUNT', 'NUMBER', TRUE),
+        ('NET_AMOUNT', 'NUMBER', TRUE),
+        ('PAYMENT_METHOD', 'STRING', TRUE),
+        ('ORDER_STATUS', 'STRING', TRUE),
+        ('BATCH_ID', 'STRING', TRUE),
+        ('GENERATED_AT_UTC', 'STRING', TRUE),
+        ('SOURCE_FILE_NAME', 'STRING', TRUE),
+        ('LOAD_TS', 'TIMESTAMP', TRUE)
+    AS expected(column_name, expected_type, is_required)
+
+),
+
+actual_schema AS (
+
+    SELECT
+        column_name,
+        data_type,
+        CASE
+            WHEN data_type IN ('NUMBER', 'DECIMAL', 'NUMERIC', 'INT', 'INTEGER', 'BIGINT') THEN 'NUMBER'
+            WHEN data_type IN ('TEXT', 'VARCHAR', 'STRING') THEN 'STRING'
+            WHEN data_type LIKE 'TIMESTAMP%' THEN 'TIMESTAMP'
+            WHEN data_type = 'DATE' THEN 'DATE'
+            ELSE data_type
+        END AS normalized_data_type
+    FROM SYNTHETIC_DATA.INFORMATION_SCHEMA.COLUMNS
+    WHERE table_schema = 'RAW'
+      AND table_name = 'SALES_RAW'
+
+)
+
+SELECT
+    expected.column_name,
+    expected.expected_type,
+    actual.data_type AS actual_snowflake_type,
+    actual.normalized_data_type AS actual_normalized_type,
+    expected.is_required,
+    CASE
+        WHEN actual.column_name IS NULL THEN 'MISSING_COLUMN'
+        WHEN expected.expected_type <> actual.normalized_data_type THEN 'TYPE_MISMATCH'
+        ELSE 'PASSED'
+    END AS schema_validation_status
+
+FROM expected_schema expected
+LEFT JOIN actual_schema actual
+    ON expected.column_name = actual.column_name
+ORDER BY
+    schema_validation_status DESC,
+    expected.column_name;
+```
+
+Expected result:
+
+```text
+schema_validation_status = PASSED
+```
+
+Any result with `MISSING_COLUMN` or `TYPE_MISMATCH` should be reviewed before downstream transformations continue.
+
+### Detecting Additive Columns in Snowflake
+
+This query detects columns that exist in `RAW.SALES_RAW` but are not part of the expected schema contract:
+
+```sql
+WITH expected_columns AS (
+
+    SELECT column_name
+    FROM VALUES
+        ('ORDER_ID'),
+        ('CUSTOMER_ID'),
+        ('PRODUCT_ID'),
+        ('PRODUCT_CATEGORY'),
+        ('ORDER_TIMESTAMP'),
+        ('QUANTITY'),
+        ('UNIT_PRICE'),
+        ('GROSS_AMOUNT'),
+        ('DISCOUNT_AMOUNT'),
+        ('NET_AMOUNT'),
+        ('PAYMENT_METHOD'),
+        ('ORDER_STATUS'),
+        ('BATCH_ID'),
+        ('GENERATED_AT_UTC'),
+        ('SOURCE_FILE_NAME'),
+        ('LOAD_TS')
+    AS expected(column_name)
+
+),
+
+actual_columns AS (
+
+    SELECT column_name
+    FROM SYNTHETIC_DATA.INFORMATION_SCHEMA.COLUMNS
+    WHERE table_schema = 'RAW'
+      AND table_name = 'SALES_RAW'
+
+)
+
+SELECT
+    actual.column_name AS additive_column,
+    'ADDITIVE_COLUMN_DETECTED' AS schema_validation_status
+FROM actual_columns actual
+LEFT JOIN expected_columns expected
+    ON actual.column_name = expected.column_name
+WHERE expected.column_name IS NULL
+ORDER BY actual.column_name;
+```
+
+Additive columns are not automatically bad. They should be reviewed, documented, and promoted intentionally through dbt.
+
+### dbt Safe Column Handling
+
+dbt staging can safely handle optional columns using a macro.
+
+Macro file:
+
+```text
+dbt_project/macros/safe_column.sql
+```
+
+Example macro:
+
+```sql
+{% macro safe_column(source_relation, column_name, data_type='varchar') %}
+    {%- set columns = adapter.get_columns_in_relation(source_relation) -%}
+    {%- set column_names = columns | map(attribute='name') | map('upper') | list -%}
+
+    {%- if column_name.upper() in column_names -%}
+        {{ column_name }}
+    {%- else -%}
+        cast(null as {{ data_type }})
+    {%- endif -%}
+{% endmacro %}
+```
+
+Example usage in `stg_sales.sql`:
+
+```sql
+{% set sales_raw_relation = source('raw', 'sales_raw') %}
+
+select
+    order_id,
+    customer_id,
+    product_id,
+    product_category,
+
+    {{ safe_column(sales_raw_relation, 'sales_channel', 'varchar') }} as sales_channel,
+
+    order_timestamp,
+    quantity,
+    unit_price,
+    gross_amount,
+    discount_amount,
+    net_amount,
+    payment_method,
+    order_status,
+    batch_id,
+    generated_at_utc,
+    source_file_name,
+    load_ts
+
+from {{ sales_raw_relation }}
+```
+
+If `SALES_CHANNEL` exists, dbt selects it.
+
+If `SALES_CHANNEL` does not exist yet, dbt returns:
+
+```sql
+cast(null as varchar)
+```
+
+This prevents optional source columns from breaking dbt compilation.
+
+### Promotion Pattern
+
+New source columns should move through the pipeline intentionally:
+
+```text
+RAW
+    → accept approved additive column
+
+STAGING
+    → standardize and type-cast column
+
+INTERMEDIATE
+    → apply business logic only if needed
+
+MARTS
+    → expose column only when required for reporting
+
+DASHBOARD
+    → use column only after mart adoption
+```
+
+This prevents every upstream source change from automatically becoming a reporting change.
+
+### Why This Matters
+
+Schema evolution is important because upstream systems change over time.
+
+A production-style ELT pipeline should:
+
+```text
+Detect schema drift
+Allow safe additive changes
+Fail fast on breaking changes
+Protect downstream dbt models
+Avoid silent dashboard corruption
+Create an audit trail of schema changes
+```
+
+This project handles schema evolution using a contract-based approach in Python, metadata validation in Snowflake, and safe optional column handling in dbt.
+
+### Interview Explanation
+
+I implemented schema evolution as a controlled contract-based process. The Python ingestion layer validates the generated DataFrame against a JSON schema contract before saving and uploading the file. Required columns must exist, type-breaking changes fail ingestion, and approved optional columns can be added safely.
+
+In Snowflake, I validate the raw table structure using `INFORMATION_SCHEMA.COLUMNS` and separately detect additive columns. In dbt, staging models use a safe column macro so optional fields do not break compilation if they are not yet present in the raw table.
+
+This gives the pipeline a controlled schema evolution workflow: breaking changes fail early, while additive changes can be reviewed, documented, and promoted intentionally through staging, intermediate models, marts, and dashboards.
+
 
 ## Late-Arriving Data Simulation
 
