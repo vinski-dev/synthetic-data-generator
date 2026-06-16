@@ -492,6 +492,260 @@ This improves reusability because dashboards and reporting tools can join to dim
 
 The project includes dbt tests for both technical and business quality.
 
+## File Checksum Validation for Ingestion
+
+This project includes file-level checksum validation in the Python ingestion layer to verify that generated files are uploaded to S3 without corruption or unintended changes.
+
+The ingestion process uses a SHA-256 checksum to compare the local CSV file against the uploaded S3 object.
+
+### Checksum Validation Flow
+
+```text
+Generate sales DataFrame
+    ↓
+Validate DataFrame
+    ↓
+Save CSV locally in output/
+    ↓
+Calculate local SHA-256 checksum
+    ↓
+Upload CSV to S3 raw landing zone
+    ↓
+Create local manifest JSON
+    ↓
+Upload manifest JSON to S3
+    ↓
+Read uploaded S3 object
+    ↓
+Recalculate S3 object SHA-256 checksum
+    ↓
+Compare local checksum vs S3 checksum
+    ↓
+Fail ingestion if checksums do not match
+```
+
+### Local Output Files
+
+When `main.py` runs, the pipeline creates a local copy of the generated data and its checksum manifest.
+
+Example:
+
+```text
+output/sales_20260616_082043.csv
+output/sales_20260616_082043.csv.manifest.json
+```
+
+The local CSV is useful for debugging, replay, and audit review before or after ingestion.
+
+### S3 Landing Files
+
+The same CSV file and its manifest are uploaded to S3.
+
+Example:
+
+```text
+s3://vinski-synthetic-data-bucket/sales/raw/year=2026/month=06/day=16/sales_20260616_082043.csv
+
+s3://vinski-synthetic-data-bucket/sales/raw/year=2026/month=06/day=16/sales_20260616_082043.csv.manifest.json
+```
+
+The CSV file is loaded by Snowpipe into Snowflake.
+
+The manifest JSON file is used for file-level audit and checksum validation.
+
+### Manifest File Contents
+
+Each manifest JSON contains file-level metadata:
+
+```json
+{
+  "file_name": "sales_20260616_082043.csv",
+  "s3_uri": "s3://vinski-synthetic-data-bucket/sales/raw/year=2026/month=06/day=16/sales_20260616_082043.csv",
+  "s3_key": "sales/raw/year=2026/month=06/day=16/sales_20260616_082043.csv",
+  "checksum_algorithm": "SHA-256",
+  "checksum_sha256": "example_checksum_value",
+  "file_size_bytes": 12345678,
+  "row_count": 100000,
+  "created_at_utc": "2026-06-16T08:20:43+00:00"
+}
+```
+
+### Python Implementation
+
+The checksum logic is implemented in:
+
+```text
+pipeline/sales_pipeline.py
+```
+
+Key functions:
+
+```text
+calculate_file_sha256()
+get_csv_row_count()
+calculate_s3_object_sha256()
+save_checksum_manifest()
+upload_file_to_s3()
+```
+
+The `upload_file_to_s3()` function is responsible for:
+
+```text
+Calculating the local checksum
+Uploading the CSV to S3
+Creating the manifest JSON
+Uploading the manifest JSON to S3
+Reading the S3 object back
+Comparing local checksum against S3 checksum
+```
+
+### Manual Run
+
+Run the ingestion manually:
+
+```powershell
+cd C:\dev\synthetic-data-generator
+.\venv311\Scripts\Activate.ps1
+.\set_env.ps1
+
+python main.py
+```
+
+Expected output includes:
+
+```text
+Local SHA-256 checksum: ...
+Local file size bytes: ...
+Local CSV row count: 100,000
+Checksum manifest created: ...
+Checksum manifest uploaded to: s3://...
+S3 SHA-256 checksum: ...
+Checksum validation passed. Local file matches S3 object.
+```
+
+### Snowflake Loading Behavior
+
+Snowpipe should load only CSV files into:
+
+```text
+SYNTHETIC_DATA.RAW.SALES_RAW
+```
+
+Manifest files should not be loaded into the raw sales table because they are audit metadata, not transaction records.
+
+The Snowpipe `COPY INTO` statement should use a CSV-only pattern:
+
+```sql
+PATTERN = '.*[.]csv$'
+```
+
+This prevents files such as the following from being loaded into `SALES_RAW`:
+
+```text
+*.manifest.json
+```
+
+To confirm manifest files were not loaded into the sales raw table:
+
+```sql
+SELECT *
+FROM SYNTHETIC_DATA.RAW.SALES_RAW
+WHERE SOURCE_FILE_NAME ILIKE '%manifest%';
+```
+
+Expected result:
+
+```text
+0 rows
+```
+
+### Checking Manifest Files from Snowflake
+
+Manifest files can be checked from the external stage instead of the sales raw table.
+
+Create a JSON file format:
+
+```sql
+CREATE OR REPLACE FILE FORMAT SYNTHETIC_DATA.RAW.JSON_FILE_FORMAT
+TYPE = JSON;
+```
+
+List manifest files from the stage:
+
+```sql
+LIST @SYNTHETIC_DATA.RAW.SALES_S3_STAGE
+PATTERN = '.*manifest[.]json';
+```
+
+Read manifest contents:
+
+```sql
+SELECT
+    METADATA$FILENAME AS manifest_file_path,
+    $1:file_name::STRING AS data_file_name,
+    $1:s3_uri::STRING AS data_s3_uri,
+    $1:s3_key::STRING AS data_s3_key,
+    $1:checksum_algorithm::STRING AS checksum_algorithm,
+    $1:checksum_sha256::STRING AS checksum_sha256,
+    $1:file_size_bytes::NUMBER AS file_size_bytes,
+    $1:row_count::NUMBER AS expected_row_count,
+    $1:created_at_utc::TIMESTAMP_NTZ AS manifest_created_at_utc
+FROM @SYNTHETIC_DATA.RAW.SALES_S3_STAGE
+(
+    FILE_FORMAT => SYNTHETIC_DATA.RAW.JSON_FILE_FORMAT,
+    PATTERN => '.*manifest[.]json'
+)
+ORDER BY manifest_created_at_utc DESC;
+```
+
+### Optional File Ingestion Audit Table
+
+For a more production-style implementation, manifest records can be loaded into a separate audit table:
+
+```text
+SYNTHETIC_DATA.RAW.FILE_INGESTION_AUDIT
+```
+
+This keeps transaction data and file-level metadata separate.
+
+Recommended design:
+
+```text
+SALES_RAW
+    → transaction-level sales records
+
+FILE_INGESTION_AUDIT
+    → file name, checksum, file size, expected row count, manifest timestamp
+```
+
+This separation keeps the raw sales table clean while preserving auditability.
+
+### Why SHA-256 Was Used
+
+SHA-256 is used because it provides a strong file fingerprint for validating file integrity.
+
+The pipeline does not rely on the S3 `ETag` as the main checksum because `ETag` is not always a simple MD5 hash, especially when multipart upload or encryption is involved.
+
+### Why This Matters
+
+Checksum validation improves ingestion reliability by proving that:
+
+```text
+The local generated file was fingerprinted before upload
+The uploaded S3 object matches the local file
+A manifest exists for audit and reconciliation
+The pipeline can detect file corruption or tampering
+```
+
+This makes the ingestion layer more production-ready and auditable.
+
+### Interview Explanation
+
+I implemented checksum validation in the ingestion layer using SHA-256. Before uploading a generated CSV to S3, the pipeline calculates the local file checksum, file size, and row count. After the upload, it reads the S3 object back and recalculates the checksum. If the local checksum and S3 checksum do not match, the ingestion fails.
+
+The pipeline also creates a manifest JSON file beside the CSV. The manifest stores the file name, S3 path, checksum, file size, row count, and creation timestamp. Snowpipe loads only the CSV files into the raw sales table, while the manifest files are used separately for audit and reconciliation.
+
+
 ## Late-Arriving Data Simulation
 
 This project includes a late-arriving data simulation to demonstrate how the pipeline handles records that arrive today but belong to older business dates.

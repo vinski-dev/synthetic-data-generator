@@ -93,15 +93,7 @@ def generate_sales_data(num_records: int = NUM_RECORDS) -> str:
         }
     )
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    local_path = f"output/{OUTPUT_PREFIX}_{timestamp}.csv"
-
-    df.to_csv(local_path, index=False)
-
-    print(f"Generated {len(df):,} records.")
-    print(f"Local file created: {local_path}")
-
-    return local_path
+    return df
 
 
 
@@ -532,9 +524,16 @@ def save_checksum_manifest(
 
 def upload_file_to_s3(local_path: str) -> str:
     """
-    Upload generated sales CSV to S3.
-    Returns the final S3 URI.
+    Upload generated sales CSV to S3 with checksum validation.
+
+    Steps:
+    1. Calculate local SHA-256 checksum.
+    2. Upload CSV to S3 with checksum metadata.
+    3. Upload checksum manifest JSON beside the CSV.
+    4. Re-read S3 object and verify checksum.
+    5. Return final S3 URI.
     """
+
     if not os.path.exists(local_path):
         raise FileNotFoundError(f"File does not exist: {local_path}")
 
@@ -552,26 +551,84 @@ def upload_file_to_s3(local_path: str) -> str:
         f"{file_name}"
     )
 
+    local_checksum = calculate_file_sha256(local_path)
+    file_size_bytes = os.path.getsize(local_path)
+    row_count = get_csv_row_count(local_path)
+
+    print(f"Local SHA-256 checksum: {local_checksum}")
+    print(f"Local file size bytes: {file_size_bytes:,}")
+    print(f"Local CSV row count: {row_count:,}")
+
     try:
         s3_client.upload_file(
             Filename=local_path,
             Bucket=BUCKET_NAME,
             Key=s3_key,
-            ExtraArgs={"ContentType": "text/csv"},
+            ExtraArgs={
+                "ContentType": "text/csv",
+                "Metadata": {
+                    "checksum_algorithm": "SHA-256",
+                    "checksum_sha256": local_checksum,
+                    "file_size_bytes": str(file_size_bytes),
+                    "row_count": str(row_count),
+                },
+            },
         )
+
+        s3_uri = f"s3://{BUCKET_NAME}/{s3_key}"
+
+        manifest_path = save_checksum_manifest(
+            local_path=local_path,
+            s3_uri=s3_uri,
+            s3_key=s3_key,
+            checksum_sha256=local_checksum,
+        )
+
+        manifest_s3_key = f"{s3_key}.manifest.json"
+
+        s3_client.upload_file(
+            Filename=manifest_path,
+            Bucket=BUCKET_NAME,
+            Key=manifest_s3_key,
+            ExtraArgs={
+                "ContentType": "application/json",
+            },
+        )
+
+        print(f"Checksum manifest uploaded to: s3://{BUCKET_NAME}/{manifest_s3_key}")
+
+        s3_checksum = calculate_s3_object_sha256(
+            s3_client=s3_client,
+            bucket_name=BUCKET_NAME,
+            s3_key=s3_key,
+        )
+
+        print(f"S3 SHA-256 checksum: {s3_checksum}")
+
+        if local_checksum != s3_checksum:
+            raise RuntimeError(
+                "Checksum validation failed. "
+                f"local_checksum={local_checksum}, s3_checksum={s3_checksum}"
+            )
+
+        print("Checksum validation passed. Local file matches S3 object.")
+        print(f"Uploaded file to: {s3_uri}")
+
+        return s3_uri
 
     except ClientError as error:
         raise RuntimeError(
             f"Failed to upload file to S3 bucket={BUCKET_NAME}, key={s3_key}: {error}"
         ) from error
+    
+def upload_to_s3(local_path: str) -> str:
+    """
+    Backward-compatible wrapper for existing scripts.
+    Uses the checksum-enabled S3 upload function.
+    """
 
-    s3_uri = f"s3://{BUCKET_NAME}/{s3_key}"
-
-    print(f"Uploaded file to: {s3_uri}")
-
-    return s3_uri
-
-
+    return upload_file_to_s3(local_path)
+  
 
 def upload_backfill_to_s3(local_path: str, business_date: date) -> str:
     """
