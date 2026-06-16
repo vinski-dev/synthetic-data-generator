@@ -3,6 +3,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timezone, date
+from pathlib import Path
 
 import boto3
 import numpy as np
@@ -76,6 +77,10 @@ def generate_sales_data(num_records: int = NUM_RECORDS) -> str:
             "customer_id": np.random.randint(1000, 9999, size=num_records),
             "product_id": np.random.randint(100, 999, size=num_records),
             "product_category": np.random.choice(product_categories, size=num_records),
+            "sales_channel": np.random.choice(
+                ["Online", "Store", "Mobile App", "Marketplace"],
+                size=num_records,
+            ),
             "order_timestamp": random_dates,
             "quantity": quantity,
             "unit_price": unit_price,
@@ -317,6 +322,160 @@ def validate_sales_data(df: pd.DataFrame) -> None:
         raise ValueError("Invalid quantity found.")
 
     print("Data validation passed.")
+
+def normalize_column_name(column_name: str) -> str:
+    """
+    Normalize column names for schema comparison.
+    """
+
+    return column_name.strip().lower()
+
+
+def map_pandas_dtype_to_contract_type(dtype: str) -> str:
+    """
+    Map pandas dtype to simplified contract type.
+    """
+
+    dtype = str(dtype).lower()
+
+    if "int" in dtype:
+        return "integer"
+
+    if "float" in dtype or "decimal" in dtype:
+        return "number"
+
+    if "datetime" in dtype:
+        return "datetime"
+
+    return "string"
+
+
+def load_schema_contract(contract_path: str = "schema/sales_schema_contract.json") -> dict:
+    """
+    Load schema contract from JSON file.
+    """
+
+    path = Path(contract_path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"Schema contract not found: {contract_path}")
+
+    with open(path, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def infer_dataframe_schema(df: pd.DataFrame) -> dict[str, str]:
+    """
+    Infer simplified schema from a pandas DataFrame.
+    """
+
+    return {
+        normalize_column_name(column): map_pandas_dtype_to_contract_type(dtype)
+        for column, dtype in df.dtypes.items()
+    }
+
+
+def validate_schema_contract(
+    df: pd.DataFrame,
+    contract_path: str = "schema/sales_schema_contract.json",
+) -> dict:
+    """
+    Validate DataFrame schema against the schema contract.
+
+    Rules:
+    - Required columns must exist.
+    - Additive columns are allowed only if allow_additive_columns is true.
+    - New columns are reported for audit.
+    """
+
+    contract = load_schema_contract(contract_path)
+    actual_schema = infer_dataframe_schema(df)
+
+    required_columns = {
+        normalize_column_name(column): expected_type
+        for column, expected_type in contract["required_columns"].items()
+    }
+
+    optional_columns = {
+        normalize_column_name(column): expected_type
+        for column, expected_type in contract.get("optional_columns", {}).items()
+    }
+
+    actual_columns = set(actual_schema.keys())
+    required_column_set = set(required_columns.keys())
+    optional_column_set = set(optional_columns.keys())
+
+    missing_required_columns = sorted(required_column_set - actual_columns)
+
+    known_columns = required_column_set | optional_column_set
+    additive_columns = sorted(actual_columns - known_columns)
+
+    type_mismatches = []
+
+    for column_name, expected_type in required_columns.items():
+        actual_type = actual_schema.get(column_name)
+
+        if actual_type and actual_type != expected_type:
+            type_mismatches.append(
+                {
+                    "column_name": column_name,
+                    "expected_type": expected_type,
+                    "actual_type": actual_type,
+                }
+            )
+
+    validation_result = {
+        "dataset": contract["dataset"],
+        "contract_version": contract["version"],
+        "actual_schema": actual_schema,
+        "missing_required_columns": missing_required_columns,
+        "additive_columns": additive_columns,
+        "type_mismatches": type_mismatches,
+        "schema_validation_status": "PASSED",
+    }
+
+    if missing_required_columns:
+        validation_result["schema_validation_status"] = "FAILED"
+        raise ValueError(
+            f"Schema validation failed. Missing required columns: {missing_required_columns}"
+        )
+
+    if type_mismatches:
+        validation_result["schema_validation_status"] = "FAILED"
+        raise ValueError(f"Schema validation failed. Type mismatches: {type_mismatches}")
+
+    if additive_columns and not contract.get("allow_additive_columns", False):
+        validation_result["schema_validation_status"] = "FAILED"
+        raise ValueError(
+            f"Schema validation failed. Additive columns not allowed: {additive_columns}"
+        )
+
+    if additive_columns:
+        print(f"Schema validation passed with additive columns: {additive_columns}")
+    else:
+        print("Schema validation passed. No schema drift detected.")
+
+    return validation_result
+
+
+def save_schema_manifest(
+    local_path: str,
+    schema_validation_result: dict,
+) -> str:
+    """
+    Save schema validation result as a local JSON manifest.
+    """
+
+    schema_manifest_path = f"{local_path}.schema.json"
+
+    schema_validation_result["created_at_utc"] = datetime.now(timezone.utc).isoformat()
+
+    with open(schema_manifest_path, "w", encoding="utf-8") as file:
+        json.dump(schema_validation_result, file, indent=2)
+
+    print(f"Schema manifest created: {schema_manifest_path}")
+
+    return schema_manifest_path   
 
 def validate_sales_file(local_path: str) -> str:
     """
