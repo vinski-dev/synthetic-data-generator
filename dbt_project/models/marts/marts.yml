@@ -52,7 +52,7 @@ models:
         description: Standardized order status.
         data_tests:
           - accepted_values:
-              arguments:
+              #arguments:
                 values: ["COMPLETED", "PENDING", "CANCELLED", "REFUNDED"]
 
       - name: source_file_name
@@ -126,7 +126,7 @@ models:
         description: Indicates whether raw and fact row counts match.
         data_tests:
           - accepted_values:
-              arguments:
+              #arguments:
                 values: ["MATCHED", "MISMATCHED"]
   
   - name: mart_product_category_sales_kpi
